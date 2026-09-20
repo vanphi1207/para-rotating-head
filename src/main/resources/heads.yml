@@ -1,0 +1,14 @@
+example:
+  location: {world: world, x: 0, y: 64, z: 0}
+  display_range: 64
+  options: {texture: "", scale: 2.0, speedY: 1.0}
+  interaction:
+    enable: false
+  holograms:
+    enable: false
+    # native is the default. Install FancyHolograms before selecting fancyholograms.
+    provider: native
+    offsetY: 1.0
+    refresh_interval: 0
+    lines:
+      - "<gradient:#fbc531:#f0932b><bold>Rotating Head"

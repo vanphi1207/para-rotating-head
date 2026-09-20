@@ -1,0 +1,13 @@
+command:
+  reload: "<green>Rotating heads reloaded."
+  no-heads: "<red>No active heads."
+  created: "<green>Created <white>{id}</white>."
+  updated: "<green>Updated <white>{id}</white>."
+  deleted: "<green>Deleted <white>{id}</white>."
+  moved: "<green>Moved <white>{id}</white>."
+  teleported: "<green>Teleported to <white>{id}</white>."
+  unknown: "<red>Unknown head: <white>{id}</white>"
+  exists: "<red>Head already exists: <white>{id}</white>"
+  player-only: "<red>This command requires a player."
+  invalid: "<red>Invalid value: {reason}"
+  usage: "<yellow>/mmh reload|list|create|edit|teleport|movehere|delete|benchmark|info"
