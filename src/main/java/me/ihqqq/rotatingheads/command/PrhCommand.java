@@ -16,7 +16,6 @@ import me.ihqqq.rotatingheads.util.TextureUtil;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -33,15 +32,15 @@ import java.util.Map;
 public final class PrhCommand implements CommandExecutor, TabCompleter {
     private static final String PERMISSION = "rotatingheads.admin";
     private static final List<String> SUBCOMMANDS = List.of("reload", "list", "info", "near",
-            "create", "clone", "edit", "teleport", "movehere", "delete", "benchmark");
-    private static final List<String> EDIT_OPTIONS = List.of("texture", "item", "scale",
+            "create", "clone", "edit", "teleport", "movehere", "center", "delete",
+            "benchmark");
+    private static final List<String> EDIT_OPTIONS = List.of("texture", "scale",
             "speed", "speedx", "speedz", "bobheight", "bobperiod", "brightness", "range",
             "interaction", "hologram", "offsety", "refresh", "provider", "link", "follow",
             "line");
     private static final List<String> LINE_ACTIONS = List.of("add", "set", "remove", "clear");
     private static final List<String> PROVIDERS = List.of("native", "fancyholograms");
     private static final List<String> BOOLEANS = List.of("true", "false");
-    private static final int MAX_ITEM_SUGGESTIONS = 50;
 
     private final HeadRepository repository;
     private final HeadRuntime runtime;
@@ -81,6 +80,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
                 case "edit" -> edit(sender, args);
                 case "teleport" -> teleport(sender, args);
                 case "movehere" -> move(sender, args);
+                case "center" -> center(sender, args);
                 case "delete" -> delete(sender, args);
                 case "benchmark" -> benchmark(sender, args);
                 default -> sender.sendMessage(language.message("command.usage"));
@@ -141,7 +141,6 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
                 "x", HeadUtil.format(location.getX()),
                 "y", HeadUtil.format(location.getY()),
                 "z", HeadUtil.format(location.getZ()),
-                "item", options.item(),
                 "scale", HeadUtil.format(options.scale()),
                 "speedY", HeadUtil.format(options.speed()),
                 "speedX", HeadUtil.format(options.speedX()),
@@ -232,7 +231,6 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
         Head updated = switch (option) {
             case "texture" -> old.withOptions(options.withTexture(TextureUtil.normalize(
                     String.join(" ", Arrays.copyOfRange(args, 3, args.length)))));
-            case "item" -> old.withOptions(options.withItem(parseItem(value)));
             case "scale" -> old.withOptions(options.withScale(
                     HeadUtil.boundedDouble(value, 0.05, 20)));
             case "speed" -> old.withOptions(options.withSpeed(
@@ -309,14 +307,6 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
         return lines;
     }
 
-    private String parseItem(String value) {
-        Material material = Material.matchMaterial(value);
-        if (material == null || !material.isItem() || material.isAir()) {
-            throw new MessageException("validation.item", "value", value);
-        }
-        return material.name();
-    }
-
     private String parseProvider(String value) {
         String provider = value.toLowerCase(Locale.ROOT);
         if (!PROVIDERS.contains(provider)) {
@@ -350,6 +340,18 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
         Head updated = requireHead(args[1]).at(player.getLocation());
         store(updated);
         sender.sendMessage(language.message("command.moved", "id", args[1]));
+    }
+
+    private void center(CommandSender sender, String[] args) {
+        require(args, 2);
+        Head head = requireHead(args[1]);
+        Location centered = HeadUtil.blockCenter(head.location())
+                .add(0, HeadRuntime.renderOffsetY(head.options()), 0);
+        store(head.at(centered));
+        sender.sendMessage(language.message("command.centered", "id", head.id(),
+                "x", HeadUtil.format(centered.getX()),
+                "y", HeadUtil.format(centered.getY()),
+                "z", HeadUtil.format(centered.getZ())));
     }
 
     private void benchmark(CommandSender sender, String[] args) {
@@ -405,6 +407,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
                     : "/prh edit <id> <" + String.join("|", EDIT_OPTIONS) + "> <value>";
             case "teleport" -> "/prh teleport <id>";
             case "movehere" -> "/prh movehere <id>";
+            case "center" -> "/prh center <id>";
             case "delete" -> "/prh delete <id>";
             case "benchmark" -> "/prh benchmark <id> [count] | /prh benchmark clear";
             default -> "/prh <" + String.join("|", SUBCOMMANDS) + ">";
@@ -424,7 +427,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
         }
         String sub = args[0].toLowerCase(Locale.ROOT);
         switch (sub) {
-            case "teleport", "movehere", "delete", "info", "clone" -> {
+            case "teleport", "movehere", "center", "delete", "info", "clone" -> {
                 return args.length == 2 ? TabUtil.filter(heads.keySet(), current) : List.of();
             }
             case "near" -> {
@@ -467,7 +470,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
             return List.of();
         }
         Head head = heads.get(args[1]);
-        return TabUtil.filter(editValues(head, option, current), current);
+        return TabUtil.filter(editValues(head, option), current);
     }
 
     private List<String> completeLine(String[] args, String current) {
@@ -487,7 +490,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
         return List.of();
     }
 
-    private List<String> editValues(Head head, String option, String current) {
+    private List<String> editValues(Head head, String option) {
         return switch (option) {
             case "scale" -> withCurrent(List.of("0.5", "1", "1.5", "2", "3", "5"),
                     head == null ? null : HeadUtil.format(head.options().scale()));
@@ -513,29 +516,8 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
             }
             case "follow" -> BOOLEANS;
             case "interaction", "hologram" -> BOOLEANS;
-            case "item" -> itemSuggestions(current);
             default -> List.of();
         };
-    }
-
-    private static List<String> itemSuggestions(String prefix) {
-        if (prefix.isEmpty()) {
-            return List.of("player_head");
-        }
-        List<String> result = new ArrayList<>();
-        String lower = prefix.toLowerCase(Locale.ROOT);
-        for (Material material : Material.values()) {
-            if (!material.isLegacy() && material.isItem() && !material.isAir()) {
-                String name = material.name().toLowerCase(Locale.ROOT);
-                if (name.startsWith(lower)) {
-                    result.add(name);
-                    if (result.size() >= MAX_ITEM_SUGGESTIONS) {
-                        break;
-                    }
-                }
-            }
-        }
-        return result;
     }
 
     private static List<String> withCurrent(List<String> base, String current) {

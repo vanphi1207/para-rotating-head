@@ -1,5 +1,7 @@
 package me.ihqqq.rotatingheads.util;
 
+import org.bukkit.Location;
+
 import java.util.Locale;
 
 public final class HeadUtil {
@@ -81,6 +83,13 @@ public final class HeadUtil {
             throw new MessageException("validation.no-lines");
         }
         return boundedInt(value, 1, size) - 1;
+    }
+
+    public static Location blockCenter(Location location) {
+        return new Location(location.getWorld(),
+                Math.floor(location.getX()) + 0.5,
+                Math.floor(location.getY()) + 0.5,
+                Math.floor(location.getZ()) + 0.5);
     }
 
     public static String format(double value) {

@@ -2,8 +2,8 @@ example:
   location: {world: world, x: 0, y: 64, z: 0}
   display_range: 64
   options:
-    item: PLAYER_HEAD      # any item; texture only applies to PLAYER_HEAD
     texture: ""            # Base64 value, textures.minecraft.net URL or texture hash
+    # empty = the vanilla default head skin
     scale: 2.0
     speedY: 1.0            # degrees per tick around each axis (negative = reverse)
     speedX: 0.0
@@ -11,6 +11,9 @@ example:
     bob:
       height: 0.0          # blocks up and down; 0 disables bobbing
       period: 60           # ticks per up-and-down cycle
+    brightness:
+      sky: 15              # 0-15; 15/15 ignores world lighting
+      block: 15
   interaction:
     enable: false
     # Action lines run for the clicking player. Tags can be chained:

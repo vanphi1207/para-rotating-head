@@ -86,7 +86,6 @@ public final class HeadRepository {
         yaml.set(path + ".display_range", head.displayRange());
         yaml.set(path + ".options.texture", head.options().texture());
         yaml.set(path + ".options.scale", head.options().scale());
-        yaml.set(path + ".options.item", head.options().item());
         yaml.set(path + ".options.speedY", head.options().speed());
         yaml.set(path + ".options.speedX", head.options().speedX());
         yaml.set(path + ".options.speedZ", head.options().speedZ());
@@ -113,6 +112,7 @@ public final class HeadRepository {
         yaml.set(path + ".holograms.provider", head.hologram().provider());
         yaml.set(path + ".holograms.link", head.hologram().link());
         yaml.set(path + ".holograms.follow_head", head.hologram().followHead());
+        yaml.set(path + ".options.item", null);
         saveAtomic();
     }
 
@@ -148,7 +148,6 @@ public final class HeadRepository {
         double speedZ = options.getDouble("speedZ", 0);
         double bobHeight = options.getDouble("bob.height", 0);
         int bobPeriod = options.getInt("bob.period", 60);
-        String item = options.getString("item", HeadOptions.DEFAULT_ITEM);
         ConfigurationSection interaction = section.getConfigurationSection("interaction");
         Interaction interactionValue = new Interaction(interaction != null
                 && interaction.getBoolean("enable", false),
@@ -174,7 +173,7 @@ public final class HeadRepository {
                 hologram == null || hologram.getBoolean("follow_head", true));
         return new Head(id, location, section.getInt("display_range", 64),
                 new HeadOptions(texture, scale, speed, brightness, speedX, speedZ,
-                        bobHeight, bobPeriod, item), interactionValue,
+                        bobHeight, bobPeriod), interactionValue,
                 hologramValue);
     }
 

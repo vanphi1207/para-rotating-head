@@ -1,14 +1,14 @@
 name: ParaRotatingHead
-version: 1.0.0
+version: '${project.version}'
 main: me.ihqqq.rotatingheads.RotatingHeadsPlugin
 api-version: '1.21'
 authors: [ihqqq]
-description: Clean, configurable rotating heads for Paper.
+description: Clean, configurable rotating player heads for Paper.
 softdepend: [PlaceholderAPI, FancyHolograms]
 commands:
   prh:
     description: Manage rotating heads
-    usage: /prh <reload|list|create|edit|teleport|movehere|delete|benchmark|info>
+    usage: /prh <reload|list|info|near|create|clone|edit|teleport|movehere|center|delete|benchmark>
     permission: rotatingheads.admin
 permissions:
   rotatingheads.admin:

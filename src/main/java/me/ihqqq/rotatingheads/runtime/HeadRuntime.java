@@ -43,6 +43,19 @@ public final class HeadRuntime {
     private static final double MAX_STEP_DEGREES = 60.0;
     private static final int LINK_CHECK_TICKS = 100;
     private static final int MAX_INTERVAL_TICKS = 40;
+    // The PLAYER_HEAD model fills x/z 4..12 and y 0..8 of the 16-unit item cube. Measured
+    // from the display origin (the cube's centre) it is therefore half a block wide and
+    // sits entirely below the origin, spanning y -0.5..0 at scale 1.
+    private static final double HEAD_HALF_WIDTH = 0.25;
+    private static final double HEAD_BOTTOM = -0.5;
+    private static final double HEAD_TOP = 0.0;
+    private static final double HEAD_CENTER_Y = (HEAD_TOP + HEAD_BOTTOM) / 2.0;
+    /** Distance from the display origin to the model's farthest corner. */
+    private static final double CORNER_RADIUS = Math.sqrt(
+            2 * HEAD_HALF_WIDTH * HEAD_HALF_WIDTH + HEAD_BOTTOM * HEAD_BOTTOM);
+    private static final double FACE_DIAGONAL = Math.sqrt(2);
+    /** Floor so a very small head stays clickable. */
+    private static final double MIN_INTERACTION_SIZE = 0.25;
 
     private final JavaPlugin plugin;
     private final NamespacedKey entityKey;
@@ -208,7 +221,7 @@ public final class HeadRuntime {
             return null;
         }
         ItemDisplay item = world.spawn(head.location(), ItemDisplay.class, display -> {
-            display.setItemStack(createItem(head.options()));
+            display.setItemStack(createSkull(head.options()));
             display.getPersistentDataContainer().set(entityKey, PersistentDataType.STRING, id);
             display.setViewRange(head.displayRange() / 64.0f);
             display.setBrightness(new Display.Brightness(
@@ -427,43 +440,70 @@ public final class HeadRuntime {
         }
     }
 
+    /**
+     * How far the display origin sits above the centre of the rendered head. The model
+     * hangs below the origin, so anything that wants to line up with what the player
+     * actually sees has to add this.
+     */
+    public static double renderOffsetY(HeadOptions options) {
+        return -HEAD_CENTER_Y * options.scale();
+    }
+
     private Interaction spawnInteraction(Head head, String id) {
         if (!head.interaction().enabled()) {
             return null;
         }
-        // A player head renders about half a block wide at scale 1, so the hitbox is
-        // scale * 0.5 (min 0.5). Interaction entities are anchored at their bottom
-        // centre, so lower the spawn point by half the height to centre the box.
-        float size = (float) Math.max(0.5, head.options().scale() * 0.5);
-        Location location = head.location().clone().subtract(0, size / 2.0, 0);
+        HeadOptions options = head.options();
+        double scale = options.scale();
+        // Extents of the swept volume, measured from the display origin.
+        double halfWidth = HEAD_HALF_WIDTH * scale;
+        double bottom = HEAD_BOTTOM * scale;
+        double top = HEAD_TOP * scale;
+        if (options.speedX() != 0 || options.speedZ() != 0) {
+            // Rotation happens about the display origin, not about the head's own
+            // centre. Tilting off the vertical axis therefore orbits the model around
+            // the origin, and the swept volume is the sphere through its farthest
+            // corner, centred on the origin.
+            double radius = CORNER_RADIUS * scale;
+            halfWidth = radius;
+            bottom = -radius;
+            top = radius;
+        } else if (options.speed() != 0) {
+            // Spinning around Y only: the model is centred on that axis, so the corners
+            // sweep out to the face diagonal and the vertical extent is unchanged.
+            halfWidth *= FACE_DIAGONAL;
+        }
+        // Bobbing is a world-space translation, so it is not affected by scale.
+        bottom -= options.bobHeight();
+        top += options.bobHeight();
+
+        float boxWidth = (float) Math.max(MIN_INTERACTION_SIZE, 2 * halfWidth);
+        float boxHeight = (float) Math.max(MIN_INTERACTION_SIZE, top - bottom);
+        // Interaction entities are anchored at their bottom face, so drop the spawn
+        // point to the bottom of the swept volume.
+        double centerY = (top + bottom) / 2.0;
+        Location location = head.location().clone().add(0, centerY - boxHeight / 2.0, 0);
         return location.getWorld().spawn(location, Interaction.class, entity -> {
-            entity.setInteractionWidth(size);
-            entity.setInteractionHeight(size);
+            entity.setInteractionWidth(boxWidth);
+            entity.setInteractionHeight(boxHeight);
             entity.setResponsive(false);
             entity.setPersistent(false);
             entity.getPersistentDataContainer().set(entityKey, PersistentDataType.STRING, id);
         });
     }
 
-    private ItemStack createItem(HeadOptions options) {
-        String key = options.item() + "|" + options.texture();
-        ItemStack cached = skullCache.get(key);
+    private ItemStack createSkull(HeadOptions options) {
+        ItemStack cached = skullCache.get(options.texture());
         if (cached == null) {
-            cached = buildItem(options);
-            skullCache.put(key, cached);
+            cached = buildSkull(options);
+            skullCache.put(options.texture(), cached);
         }
         return cached.clone();
     }
 
-    private ItemStack buildItem(HeadOptions options) {
-        Material material = Material.matchMaterial(options.item());
-        if (material == null || !material.isItem() || material.isAir()) {
-            plugin.getLogger().warning("Unknown item '" + options.item()
-                    + "', using PLAYER_HEAD.");
-            material = Material.PLAYER_HEAD;
-        }
-        ItemStack item = new ItemStack(material);
-        if (material != Material.PLAYER_HEAD || options.texture().isBlank()) {
+    private ItemStack buildSkull(HeadOptions options) {
+        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        if (options.texture().isBlank()) {
             return item;
         }
         try {

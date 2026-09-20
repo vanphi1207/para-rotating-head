@@ -9,8 +9,11 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 public final class Language {
+    private static final List<String> BUNDLED_LANGUAGES = List.of("en_us", "vi_vn");
+
     private final JavaPlugin plugin;
     private final SettingsHolder settings;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
@@ -19,10 +22,22 @@ public final class Language {
     public Language(JavaPlugin plugin, SettingsHolder settings) {
         this.plugin = plugin;
         this.settings = settings;
+        extractBundled();
         reload();
     }
 
+    private void extractBundled() {
+        for (String code : BUNDLED_LANGUAGES) {
+            String name = "languages/" + code + ".yml";
+            File file = new File(plugin.getDataFolder(), name);
+            if (!file.exists() && plugin.getResource(name) != null) {
+                plugin.saveResource(name, false);
+            }
+        }
+    }
+
     public void reload() {
+        extractBundled();
         String name = "languages/" + settings.get().language() + ".yml";
         File file = new File(plugin.getDataFolder(), name);
         if (!file.exists() && plugin.getResource(name) != null) {
@@ -59,7 +74,6 @@ public final class Language {
             value = "<red>Missing message: " + key;
         }
         for (int i = 0; i + 1 < replacements.length; i += 2) {
-            // Escaped so ids, exception text or usage strings can never inject tags.
             value = value.replace("{" + replacements[i] + "}",
                     miniMessage.escapeTags(replacements[i + 1]));
         }
