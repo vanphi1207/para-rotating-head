@@ -6,37 +6,63 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 public final class Language {
-    private final YamlConfiguration messages;
+    private final JavaPlugin plugin;
+    private final SettingsHolder settings;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
+    private YamlConfiguration messages;
 
-    public Language(JavaPlugin plugin, Settings settings) {
-        String name = "languages/" + settings.language() + ".yml";
-        if (!new File(plugin.getDataFolder(), name).exists()) {
+    public Language(JavaPlugin plugin, SettingsHolder settings) {
+        this.plugin = plugin;
+        this.settings = settings;
+        reload();
+    }
+
+    public void reload() {
+        String name = "languages/" + settings.get().language() + ".yml";
+        File file = new File(plugin.getDataFolder(), name);
+        if (!file.exists() && plugin.getResource(name) != null) {
             plugin.saveResource(name, false);
         }
-        File file = new File(plugin.getDataFolder(), name);
-        messages = YamlConfiguration.loadConfiguration(file);
+        YamlConfiguration loaded = YamlConfiguration.loadConfiguration(file);
+
+        YamlConfiguration defaults = readBundled(name);
+        if (defaults == null) {
+            defaults = readBundled("languages/en_us.yml");
+        }
+        if (defaults != null) {
+            loaded.setDefaults(defaults);
+            loaded.options().copyDefaults(false);
+        }
+        messages = loaded;
+    }
+
+    private YamlConfiguration readBundled(String name) {
+        try (InputStream stream = plugin.getResource(name)) {
+            if (stream == null) {
+                return null;
+            }
+            return YamlConfiguration.loadConfiguration(
+                    new InputStreamReader(stream, StandardCharsets.UTF_8));
+        } catch (Exception exception) {
+            return null;
+        }
     }
 
     public Component message(String key, String... replacements) {
         String value = messages.getString(key);
         if (value == null) {
-            value = fallback(key);
+            value = "<red>Missing message: " + key;
         }
         for (int i = 0; i + 1 < replacements.length; i += 2) {
-            value = value.replace("{" + replacements[i] + "}", replacements[i + 1]);
+            // Escaped so ids, exception text or usage strings can never inject tags.
+            value = value.replace("{" + replacements[i] + "}",
+                    miniMessage.escapeTags(replacements[i + 1]));
         }
         return miniMessage.deserialize(value);
-    }
-
-    private String fallback(String key) {
-        return switch (key) {
-            case "command.player-only" -> "<red>Only players can use this command.";
-            case "command.head-unknown" -> "<red>Unknown head: <white>{id}</white>";
-            case "command.invalid" -> "<red>Invalid value: {reason}";
-            default -> "<red>Missing message: " + key;
-        };
     }
 }

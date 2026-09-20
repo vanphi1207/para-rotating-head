@@ -1,2 +1,4 @@
 language: en_us
 default_head_texture: eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMTVjMmZjOTIzMjhjNTQ1YTk4YjlmNTk4ZTM4Y2RlMjQ4NGFkMTNjOWY3ZmE3NWQ2ZmNkZjg3MjE0ZjJhMmFhMiJ9fX0=
+# Minimum time between two clicks of the same player on any head (0 = disabled).
+interaction_cooldown_ms: 500

@@ -3,7 +3,10 @@ package me.ihqqq.rotatingheads.runtime;
 import me.ihqqq.rotatingheads.model.HeadModels.Head;
 import me.ihqqq.rotatingheads.model.HeadModels.Hologram;
 import me.ihqqq.rotatingheads.hook.FancyHologramHook;
+import me.ihqqq.rotatingheads.model.HeadModels.HeadOptions;
 import me.ihqqq.rotatingheads.util.HeadUtil;
+import me.ihqqq.rotatingheads.util.MessageException;
+import me.ihqqq.rotatingheads.util.TextureUtil;
 import me.clip.placeholderapi.PlaceholderAPI;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -26,8 +29,7 @@ import org.bukkit.profile.PlayerProfile;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
 
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -36,13 +38,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Base64;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public final class HeadRuntime {
-    private static final Pattern TEXTURE_URL =
-            Pattern.compile("\"url\"\\s*:\\s*\"([^\"]+)\"");
+    private static final double MAX_STEP_DEGREES = 60.0;
+    private static final int LINK_CHECK_TICKS = 100;
+    private static final int MAX_INTERVAL_TICKS = 40;
 
     private final JavaPlugin plugin;
     private final NamespacedKey entityKey;
@@ -51,10 +51,14 @@ public final class HeadRuntime {
     private final Map<UUID, String> interactions = new HashMap<>();
     private final Map<String, Set<String>> chunkIndex = new HashMap<>();
     private final Set<String> benchmarkIds = new HashSet<>();
-    private final Map<String, Long> hologramTicks = new HashMap<>();
+    private final Map<String, String> headChunk = new HashMap<>();
+    private final Map<String, ItemStack> skullCache = new HashMap<>();
+    private long tick;
     private final BukkitTask rotationTask;
     private final FancyHologramHook fancyHolograms;
     private boolean fancyWarningLogged;
+    private boolean linkWarningLogged;
+    private boolean linkErrorLogged;
 
     public HeadRuntime(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -69,7 +73,7 @@ public final class HeadRuntime {
         configured.putAll(heads);
         for (Head head : heads.values()) {
             index(head);
-            if (head.location().getChunk().isLoaded()) {
+            if (isChunkLoaded(head.location())) {
                 spawnConfigured(head);
             }
         }
@@ -80,7 +84,7 @@ public final class HeadRuntime {
         unindex(head.id());
         removeSpawned(head.id());
         index(head);
-        if (head.location().getChunk().isLoaded()) {
+        if (isChunkLoaded(head.location())) {
             spawnConfigured(head);
         }
     }
@@ -132,7 +136,12 @@ public final class HeadRuntime {
             Location location = center.clone().add((index % side) * spacing, 1,
                     (index / side) * spacing);
             String id = "benchmark-" + UUID.randomUUID();
-            SpawnedHead instance = spawn(source.at(location), id);
+            Head copy = source.at(location);
+            if (copy.hologram().linked()) {
+                // 500 copies must not fight over (and move) one existing hologram.
+                copy = copy.withHologram(copy.hologram().withLink(""));
+            }
+            SpawnedHead instance = spawn(copy, id);
             if (instance != null) {
                 spawned.put(id, instance);
                 benchmarkIds.add(id);
@@ -167,7 +176,8 @@ public final class HeadRuntime {
         spawned.clear();
         interactions.clear();
         chunkIndex.clear();
-        hologramTicks.clear();
+        headChunk.clear();
+        skullCache.clear();
     }
 
     public void reset() {
@@ -178,8 +188,9 @@ public final class HeadRuntime {
         spawned.clear();
         interactions.clear();
         chunkIndex.clear();
+        headChunk.clear();
+        skullCache.clear();
         configured.clear();
-        hologramTicks.clear();
     }
 
     private void spawnConfigured(Head head) {
@@ -197,58 +208,168 @@ public final class HeadRuntime {
             return null;
         }
         ItemDisplay item = world.spawn(head.location(), ItemDisplay.class, display -> {
-            display.setItemStack(createSkull(head.options().texture()));
+            display.setItemStack(createItem(head.options()));
+            display.getPersistentDataContainer().set(entityKey, PersistentDataType.STRING, id);
             display.setViewRange(head.displayRange() / 64.0f);
             display.setBrightness(new Display.Brightness(
                     head.options().brightness().block(), head.options().brightness().sky()));
             display.setPersistent(false);
             Transformation transformation = display.getTransformation();
             transformation.getScale().set((float) head.options().scale());
+            applyPose(transformation, head.options(), world.getGameTime());
+            display.setInterpolationDuration(0);
             display.setTransformation(transformation);
         });
         TextDisplay hologram = null;
-        Object fancy = null;
-        if (head.hologram().provider().equals("fancyholograms")
-                && fancyHolograms != null) {
-            try {
-                fancy = fancyHolograms.create(head, id);
-            } catch (RuntimeException exception) {
-                warnFancyFallback(exception);
-                hologram = spawnHologram(head);
+        FancyHologramHook.Link fancy = null;
+        boolean wantsHologram = head.hologram().enabled()
+                && (head.hologram().linked() || !head.hologram().lines().isEmpty());
+        if (!wantsHologram) {
+        } else if (head.hologram().linked()) {
+            fancy = attachLinked(head, id);
+        } else if (head.hologram().provider().equals("fancyholograms")) {
+            if (fancyHolograms != null) {
+                try {
+                    fancy = fancyHolograms.attach(head, id);
+                } catch (RuntimeException exception) {
+                    warnFancyFallback(exception);
+                    hologram = spawnHologram(head, id);
+                }
+            } else {
+                warnFancyFallback(null);
+                hologram = spawnHologram(head, id);
             }
         } else {
-            if (head.hologram().provider().equals("fancyholograms")) {
-                warnFancyFallback(null);
-            }
-            hologram = spawnHologram(head);
+            hologram = spawnHologram(head, id);
         }
         Interaction interaction = spawnInteraction(head, id);
         if (interaction != null) {
             interactions.put(interaction.getUniqueId(), id);
         }
-        return new SpawnedHead(id, head, item, hologram, fancy, interaction);
+        int interval = updateInterval(head.options());
+        int refresh = head.hologram().refreshTicks();
+        Schedule schedule = new Schedule(interval, refresh,
+                interval > 0 ? Math.floorMod(id.hashCode(), interval) : 0,
+                refresh > 0 ? Math.floorMod(id.hashCode(), refresh) : 0,
+                tick);
+        return new SpawnedHead(id, head, item, hologram, fancy, interaction, schedule);
     }
 
-    private void rotateAll() {
-        for (SpawnedHead head : spawned.values()) {
-            if (!head.item().isValid()) {
-                continue;
-            }
-            long gameTime = head.item().getWorld().getGameTime();
-            float angle = (float) ((gameTime * head.head().options().speed())
-                    % 360.0) ;
-            head.item().setRotation(angle, 0);
-            int refresh = head.head().hologram().refreshTicks();
-            if (head.hologram() != null && refresh > 0) {
-                long tick = hologramTicks.merge(head.id(), 1L, Long::sum);
-                if (tick % refresh == 0 && head.hologram().isValid()) {
-                    head.hologram().text(renderText(head.head().hologram()));
-                }
+    private FancyHologramHook.Link attachLinked(Head head, String id) {
+        if (fancyHolograms == null) {
+            warnLinkUnavailable(head, null);
+            return null;
+        }
+        try {
+            return fancyHolograms.attach(head, id);
+        } catch (RuntimeException exception) {
+            warnLinkUnavailable(head, exception);
+            return null;
+        }
+    }
+
+    private void tickLink(SpawnedHead head) {
+        try {
+            fancyHolograms.tick(head.head(), head.fancy());
+        } catch (RuntimeException exception) {
+            if (!linkErrorLogged) {
+                linkErrorLogged = true;
+                plugin.getLogger().warning("Could not check the FancyHolograms link of head "
+                        + head.id() + ": " + exception.getMessage());
             }
         }
     }
 
-    private TextDisplay spawnHologram(Head head) {
+    private void warnLinkUnavailable(Head head, RuntimeException exception) {
+        if (!linkWarningLogged) {
+            linkWarningLogged = true;
+            plugin.getLogger().warning("Head " + head.id() + " is linked to FancyHolograms "
+                    + "hologram '" + head.hologram().link() + "' but FancyHolograms is not "
+                    + "usable" + (exception == null ? "." : ": " + exception.getMessage()));
+        }
+    }
+
+    public boolean fancyAvailable() {
+        return fancyHolograms != null;
+    }
+
+    public boolean linkActive(String id) {
+        SpawnedHead instance = spawned.get(id);
+        return instance != null && instance.fancy() != null && instance.fancy().resolved();
+    }
+
+    public List<String> linkableHolograms() {
+        if (fancyHolograms == null) {
+            return List.of();
+        }
+        try {
+            return fancyHolograms.linkableNames();
+        } catch (RuntimeException exception) {
+            return List.of();
+        }
+    }
+
+    private void rotateAll() {
+        tick++;
+        for (SpawnedHead head : spawned.values()) {
+            ItemDisplay item = head.item();
+            if (!item.isValid()) {
+                continue;
+            }
+            Schedule schedule = head.schedule();
+            if (schedule.interval > 0 && tick >= schedule.nextRotation) {
+                schedule.nextRotation = tick + schedule.interval;
+                long target = item.getWorld().getGameTime() + schedule.interval;
+                Transformation transformation = item.getTransformation();
+                applyPose(transformation, head.head().options(), target);
+                item.setInterpolationDelay(0);
+                item.setInterpolationDuration(schedule.interval);
+                item.setTransformation(transformation);
+            }
+            if (head.fancy() != null && !head.fancy().owned()
+                    && tick % LINK_CHECK_TICKS == 0) {
+                tickLink(head);
+            }
+            if (head.hologram() != null && schedule.refresh > 0
+                    && (tick + schedule.refreshPhase) % schedule.refresh == 0
+                    && head.hologram().isValid()) {
+                head.hologram().text(renderText(head.head().hologram()));
+            }
+        }
+    }
+
+    private static void applyPose(Transformation transformation, HeadOptions options,
+                                  long gameTime) {
+        transformation.getLeftRotation().rotationYXZ(
+                rotationRadians(options.speed(), gameTime),
+                rotationRadians(options.speedX(), gameTime),
+                rotationRadians(options.speedZ(), gameTime));
+        double bob = 0;
+        if (options.bobHeight() > 0) {
+            double phase = (gameTime % options.bobPeriod()) / (double) options.bobPeriod();
+            bob = Math.sin(phase * 2 * Math.PI) * options.bobHeight();
+        }
+        transformation.getTranslation().set(0f, (float) bob, 0f);
+    }
+
+    private static float rotationRadians(double speed, long gameTime) {
+        double degrees = (speed * gameTime) % 720.0;
+        return (float) -Math.toRadians(degrees);
+    }
+
+    static int updateInterval(HeadOptions options) {
+        double total = Math.abs(options.speed()) + Math.abs(options.speedX())
+                + Math.abs(options.speedZ());
+        int rotation = total < 1.0e-6 ? 0 : Math.max(1, Math.min(MAX_INTERVAL_TICKS,
+                (int) Math.floor(MAX_STEP_DEGREES / total)));
+        int bob = options.bobHeight() > 0 ? Math.max(2, options.bobPeriod() / 8) : 0;
+        if (rotation == 0) {
+            return bob;
+        }
+        return bob == 0 ? rotation : Math.min(rotation, bob);
+    }
+
+    private TextDisplay spawnHologram(Head head, String id) {
         Hologram config = head.hologram();
         if (!config.enabled() || config.lines().isEmpty()) {
             return null;
@@ -266,6 +387,7 @@ public final class HeadRuntime {
             transformation.getScale().set((float) config.scale());
             display.setTransformation(transformation);
             display.setPersistent(false);
+            display.getPersistentDataContainer().set(entityKey, PersistentDataType.STRING, id);
         });
     }
 
@@ -309,9 +431,12 @@ public final class HeadRuntime {
         if (!head.interaction().enabled()) {
             return null;
         }
-        Location location = head.location().clone().subtract(0, 1, 0);
+        // A player head renders about half a block wide at scale 1, so the hitbox is
+        // scale * 0.5 (min 0.5). Interaction entities are anchored at their bottom
+        // centre, so lower the spawn point by half the height to centre the box.
+        float size = (float) Math.max(0.5, head.options().scale() * 0.5);
+        Location location = head.location().clone().subtract(0, size / 2.0, 0);
         return location.getWorld().spawn(location, Interaction.class, entity -> {
-            float size = (float) head.options().scale() * 2;
             entity.setInteractionWidth(size);
             entity.setInteractionHeight(size);
             entity.setResponsive(false);
@@ -320,41 +445,73 @@ public final class HeadRuntime {
         });
     }
 
-    private ItemStack createSkull(String texture) {
-        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
-        if (texture == null || texture.isBlank()) {
+    private ItemStack createItem(HeadOptions options) {
+        String key = options.item() + "|" + options.texture();
+        ItemStack cached = skullCache.get(key);
+        if (cached == null) {
+            cached = buildItem(options);
+            skullCache.put(key, cached);
+        }
+        return cached.clone();
+    }
+
+    private ItemStack buildItem(HeadOptions options) {
+        Material material = Material.matchMaterial(options.item());
+        if (material == null || !material.isItem() || material.isAir()) {
+            plugin.getLogger().warning("Unknown item '" + options.item()
+                    + "', using PLAYER_HEAD.");
+            material = Material.PLAYER_HEAD;
+        }
+        ItemStack item = new ItemStack(material);
+        if (material != Material.PLAYER_HEAD || options.texture().isBlank()) {
             return item;
         }
         try {
-            String json = new String(Base64.getDecoder().decode(texture),
-                    StandardCharsets.UTF_8);
-            Matcher matcher = TEXTURE_URL.matcher(json);
-            if (!matcher.find()) {
-                throw new IllegalArgumentException("texture has no URL");
+            String url = TextureUtil.urlFromBase64(TextureUtil.normalize(options.texture()));
+            if (url == null) {
+                throw new IllegalArgumentException("texture has no valid skin URL");
             }
             PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID());
-            profile.getTextures().setSkin(new URL(matcher.group(1)));
+            profile.getTextures().setSkin(URI.create(url).toURL());
             SkullMeta meta = (SkullMeta) item.getItemMeta();
             meta.setOwnerProfile(profile);
             item.setItemMeta(meta);
+        } catch (MessageException exception) {
+            plugin.getLogger().warning("Invalid texture ignored: it must be a Base64 value, "
+                    + "a textures.minecraft.net URL or a texture hash.");
         } catch (Exception exception) {
             plugin.getLogger().warning("Invalid texture ignored: " + exception.getMessage());
         }
         return item;
     }
 
+    /** Unlike Location#getChunk, this never loads the chunk. */
+    private static boolean isChunkLoaded(Location location) {
+        World world = location.getWorld();
+        return world != null
+                && world.isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4);
+    }
+
     private void index(Head head) {
         Location location = head.location();
         String key = HeadUtil.chunkKey(location.getWorld().getName(),
-                location.getChunk().getX(), location.getChunk().getZ());
+                location.getBlockX() >> 4, location.getBlockZ() >> 4);
         chunkIndex.computeIfAbsent(key, ignored -> new HashSet<>()).add(head.id());
+        headChunk.put(head.id(), key);
     }
 
     private void unindex(String id) {
-        for (Set<String> ids : chunkIndex.values()) {
-            ids.remove(id);
+        String key = headChunk.remove(id);
+        if (key == null) {
+            return;
         }
-        chunkIndex.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+        Set<String> ids = chunkIndex.get(key);
+        if (ids != null) {
+            ids.remove(id);
+            if (ids.isEmpty()) {
+                chunkIndex.remove(key);
+            }
+        }
     }
 
     private void removeSpawned(String id) {
@@ -365,9 +522,8 @@ public final class HeadRuntime {
         if (instance.interaction() != null) {
             interactions.remove(instance.interaction().getUniqueId());
         }
-        hologramTicks.remove(id);
         if (instance.fancy() != null && fancyHolograms != null) {
-            fancyHolograms.remove(instance.fancy());
+            fancyHolograms.release(instance.fancy());
         }
         instance.remove();
     }
@@ -380,10 +536,26 @@ public final class HeadRuntime {
         }
     }
 
+    private static final class Schedule {
+        private final int interval;
+        private final int refresh;
+        private final int refreshPhase;
+        private long nextRotation;
+
+        private Schedule(int interval, int refresh, int rotationPhase, int refreshPhase,
+                         long now) {
+            this.interval = interval;
+            this.refresh = refresh;
+            this.refreshPhase = refreshPhase;
+            this.nextRotation = now + rotationPhase;
+        }
+    }
+
     private record SpawnedHead(String id, Head head, ItemDisplay item,
                                TextDisplay hologram,
-                               Object fancy,
-                               Interaction interaction) {
+                               FancyHologramHook.Link fancy,
+                               Interaction interaction,
+                               Schedule schedule) {
         private void remove() {
             if (item.isValid()) {
                 item.remove();

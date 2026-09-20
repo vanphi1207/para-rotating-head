@@ -19,6 +19,7 @@ public final class SettingsLoader {
         YamlConfiguration config = YamlConfiguration.loadConfiguration(
                 new File(plugin.getDataFolder(), "setting.yml"));
         return new Settings(config.getString("language", "en_us"),
-                config.getString("default_head_texture", ""));
+                config.getString("default_head_texture", ""),
+                Math.max(0L, config.getLong("interaction_cooldown_ms", 500L)));
     }
 }

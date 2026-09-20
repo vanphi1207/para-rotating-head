@@ -1,9 +1,9 @@
 package me.ihqqq.rotatingheads;
 
-import me.ihqqq.rotatingheads.command.MmhCommand;
+import me.ihqqq.rotatingheads.command.PrhCommand;
 import me.ihqqq.rotatingheads.config.HeadRepository;
 import me.ihqqq.rotatingheads.config.Language;
-import me.ihqqq.rotatingheads.config.Settings;
+import me.ihqqq.rotatingheads.config.SettingsHolder;
 import me.ihqqq.rotatingheads.config.SettingsLoader;
 import me.ihqqq.rotatingheads.listener.HeadListener;
 import me.ihqqq.rotatingheads.model.HeadModels.Head;
@@ -22,7 +22,7 @@ public final class RotatingHeadsPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveResource("heads.yml", false);
-        Settings settings = new SettingsLoader(this).load();
+        SettingsHolder settings = new SettingsHolder(new SettingsLoader(this));
         Language language = new Language(this, settings);
         repository = new HeadRepository(this);
         repository.load();
@@ -30,15 +30,14 @@ public final class RotatingHeadsPlugin extends JavaPlugin {
         runtime = new HeadRuntime(this);
         runtime.cleanupOrphans();
         runtime.load(heads);
-        MmhCommand command = new MmhCommand(repository, runtime, heads,
-                settings.defaultTexture(), language);
-        PluginCommand pluginCommand = getCommand("mmh");
+        PrhCommand command = new PrhCommand(repository, runtime, heads, settings, language);
+        PluginCommand pluginCommand = getCommand("prh");
         if (pluginCommand != null) {
             pluginCommand.setExecutor(command);
             pluginCommand.setTabCompleter(command);
         }
         getServer().getPluginManager().registerEvents(
-                new HeadListener(runtime, heads), this);
+                new HeadListener(this, runtime, heads, repository, settings), this);
         getLogger().info("Loaded " + heads.size() + " configured head(s).");
     }
 

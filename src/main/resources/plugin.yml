@@ -6,9 +6,9 @@ authors: [ihqqq]
 description: Clean, configurable rotating heads for Paper.
 softdepend: [PlaceholderAPI, FancyHolograms]
 commands:
-  mmh:
+  prh:
     description: Manage rotating heads
-    usage: /mmh <reload|list|create|edit|teleport|movehere|delete|benchmark|info>
+    usage: /prh <reload|list|create|edit|teleport|movehere|delete|benchmark|info>
     permission: rotatingheads.admin
 permissions:
   rotatingheads.admin:

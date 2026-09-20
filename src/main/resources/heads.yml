@@ -1,13 +1,31 @@
 example:
   location: {world: world, x: 0, y: 64, z: 0}
   display_range: 64
-  options: {texture: "", scale: 2.0, speedY: 1.0}
+  options:
+    item: PLAYER_HEAD      # any item; texture only applies to PLAYER_HEAD
+    texture: ""            # Base64 value, textures.minecraft.net URL or texture hash
+    scale: 2.0
+    speedY: 1.0            # degrees per tick around each axis (negative = reverse)
+    speedX: 0.0
+    speedZ: 0.0
+    bob:
+      height: 0.0          # blocks up and down; 0 disables bobbing
+      period: 60           # ticks per up-and-down cycle
   interaction:
     enable: false
+    # Action lines run for the clicking player. Tags can be chained:
+    #   [console] cmd | [player] cmd | [message] <mini>text | [sound] key[:vol[:pitch]]
+    #   [delay:20] wait ticks | [permission:node] require a permission
+    # A line without [player]/[message]/[sound] runs as console.
+    # any-click overrides left-click/right-click when it is not empty.
+    any-click: []
+    left-click: []
+    right-click: []
   holograms:
     enable: false
-    # native is the default. Install FancyHolograms before selecting fancyholograms.
     provider: native
+    link: ""
+    follow_head: true
     offsetY: 1.0
     refresh_interval: 0
     lines:

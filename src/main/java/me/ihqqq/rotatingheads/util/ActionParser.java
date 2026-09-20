@@ -1,46 +1,98 @@
 package me.ihqqq.rotatingheads.util;
 
+import me.clip.placeholderapi.PlaceholderAPI;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
-import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
-import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Runs the action lines of a head for a player. Supported forms (tags can be chained):
+ * <pre>
+ * [console] command     run as console (default when no tag is given)
+ * [player] command      run as the player
+ * [message] text        MiniMessage text sent to the player
+ * [sound] key[:vol[:pitch]]
+ * [delay:ticks]         wait before running
+ * [permission:node]     only run if the player has the permission
+ * </pre>
+ */
 public final class ActionParser {
     private ActionParser() {
     }
 
-    public static List<String> commands(List<String> actions, Player player) {
-        return commands(actions, player.getName());
-    }
-
-    public static List<String> commands(List<String> actions, String playerName) {
-        List<String> commands = new ArrayList<>();
-        for (String action : actions) {
-            if (action == null || action.isBlank()) {
+    public static void execute(Plugin plugin, List<String> actions, Player player) {
+        for (String raw : actions) {
+            ActionSyntax.Action action = ActionSyntax.parse(raw, player.getName());
+            if (action == null) {
                 continue;
             }
-            commands.add(action.replace("%player%", playerName));
-        }
-        return commands;
-    }
-
-    public static void execute(List<String> actions, Player player) {
-        for (String command : commands(actions, player)) {
-            if (command.regionMatches(true, 0, "[player]", 0, 8)) {
-                player.performCommand(command.substring(8).trim());
-            } else if (command.regionMatches(true, 0, "[console]", 0, 9)) {
-                dispatch(Bukkit.getConsoleSender(), command.substring(9).trim());
+            if (action.permission() != null && !player.hasPermission(action.permission())) {
+                continue;
+            }
+            if (action.delayTicks() > 0) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (player.isOnline()) {
+                        run(action, player);
+                    }
+                }, action.delayTicks());
             } else {
-                dispatch(Bukkit.getConsoleSender(), command);
+                run(action, player);
             }
         }
     }
 
-    private static void dispatch(CommandSender sender, String command) {
-        if (!command.isBlank()) {
-            Bukkit.dispatchCommand(sender, command);
+    private static void run(ActionSyntax.Action action, Player player) {
+        String payload = placeholders(player, action.payload());
+        switch (action.type()) {
+            case CONSOLE -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), payload);
+            case PLAYER -> player.performCommand(payload);
+            case MESSAGE -> player.sendMessage(MiniMessage.miniMessage().deserialize(payload));
+            case SOUND -> playSound(player, payload);
+        }
+    }
+
+    private static void playSound(Player player, String spec) {
+        String[] parts = spec.split(":");
+        // "minecraft:entity.player.levelup:1:1" -> namespace and key share a colon.
+        int keyParts = parts.length > 1 && !isNumber(parts[1]) ? 2 : 1;
+        StringBuilder key = new StringBuilder(parts[0]);
+        for (int i = 1; i < keyParts; i++) {
+            key.append(':').append(parts[i]);
+        }
+        float volume = keyParts < parts.length ? number(parts[keyParts], 1.0f) : 1.0f;
+        float pitch = keyParts + 1 < parts.length ? number(parts[keyParts + 1], 1.0f) : 1.0f;
+        player.playSound(player.getLocation(), key.toString(), volume, pitch);
+    }
+
+    private static boolean isNumber(String value) {
+        try {
+            Float.parseFloat(value);
+            return true;
+        } catch (NumberFormatException exception) {
+            return false;
+        }
+    }
+
+    private static float number(String value, float fallback) {
+        try {
+            return Float.parseFloat(value.trim());
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
+    }
+
+    private static String placeholders(Player player, String text) {
+        return Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")
+                ? Papi.apply(player, text) : text;
+    }
+
+    /** Isolated so PlaceholderAPI is only loaded when it is installed. */
+    private static final class Papi {
+        static String apply(Player player, String text) {
+            return PlaceholderAPI.setPlaceholders(player, text);
         }
     }
 }

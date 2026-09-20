@@ -1,144 +1,142 @@
 package me.ihqqq.rotatingheads.hook;
 
-import me.clip.placeholderapi.PlaceholderAPI;
 import me.ihqqq.rotatingheads.model.HeadModels.Head;
-import me.ihqqq.rotatingheads.model.HeadModels.Hologram;
-import org.bukkit.Color;
-import org.bukkit.entity.Display;
 import org.bukkit.Location;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.joml.Vector3f;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.logging.Logger;
 
-/**
- * Reflection adapter: FancyHolograms remains an optional runtime dependency.
- */
 public final class FancyHologramHook {
-    private final JavaPlugin plugin;
-    private final Object manager;
+    public static final String OWNED_PREFIX = "para_rotating_head_";
+    private static final double MOVE_EPSILON = 1.0e-4;
 
-    private FancyHologramHook(JavaPlugin plugin, Object manager) {
-        this.plugin = plugin;
-        this.manager = manager;
+    public static final class Link {
+        private final String name;
+        private final boolean owned;
+        private Object hologram;
+
+        private Link(String name, boolean owned, Object hologram) {
+            this.name = name;
+            this.owned = owned;
+            this.hologram = hologram;
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public boolean owned() {
+            return owned;
+        }
+
+        public boolean resolved() {
+            return hologram != null;
+        }
+    }
+
+    private final FancyBridge bridge;
+    private final Logger logger;
+
+    public FancyHologramHook(FancyBridge bridge, Logger logger) {
+        this.bridge = bridge;
+        this.logger = logger;
     }
 
     public static FancyHologramHook connect(JavaPlugin plugin) {
-        if (!plugin.getServer().getPluginManager().isPluginEnabled("FancyHolograms")) {
-            return null;
+        FancyBridge bridge = ReflectiveFancyBridge.connect(plugin);
+        return bridge == null ? null : new FancyHologramHook(bridge, plugin.getLogger());
+    }
+
+    public Link attach(Head head, String runtimeId) {
+        if (head.hologram().linked()) {
+            Link link = new Link(head.hologram().link(), false, null);
+            resolve(head, link);
+            return link;
         }
-        try {
-            Class<?> api = Class.forName(
-                    "de.oliver.fancyholograms.api.FancyHologramsPlugin");
-            boolean enabled = (boolean) api.getMethod("isEnabled").invoke(null);
-            if (!enabled) {
-                return null;
+        String name = nameFor(runtimeId);
+        Object hologram = bridge.create(name, target(head), head.hologram(),
+                head.displayRange());
+        return new Link(name, true, hologram);
+    }
+
+    public boolean tick(Head head, Link link) {
+        if (link.owned) {
+            return false;
+        }
+        if (link.hologram != null) {
+            if (bridge.find(link.name) == link.hologram) {
+                return false;
             }
-            Object instance = api.getMethod("get").invoke(null);
-            Object manager = instance.getClass().getMethod("getHologramManager")
-                    .invoke(instance);
-            return new FancyHologramHook(plugin, manager);
-        } catch (ReflectiveOperationException | LinkageError exception) {
-            plugin.getLogger().warning("FancyHolograms was detected but its API could not be loaded.");
-            return null;
+            link.hologram = null;
+            logger.info("FancyHolograms hologram '" + link.name
+                    + "' linked to head " + head.id() + " is gone; waiting for it.");
+            return true;
         }
+        return resolve(head, link);
     }
 
-    public Object create(Head head, String runtimeId) {
-        try {
-            String name = nameFor(runtimeId);
-            Location location = head.location().clone().add(0,
-                    head.hologram().offsetY(), 0);
-            Class<?> dataClass = Class.forName(
-                    "de.oliver.fancyholograms.api.data.TextHologramData");
-            Object data = dataClass.getConstructor(String.class, Location.class)
-                    .newInstance(name, location);
-            invoke(data, "setPersistent", false);
-            invoke(data, "setText", lines(head.hologram()));
-            invoke(data, "setScale", new Vector3f((float) head.hologram().scale()));
-            invoke(data, "setBillboard", Display.Billboard.CENTER);
-            invoke(data, "setSeeThrough", head.hologram().seeThrough());
-            invoke(data, "setTextShadow", head.hologram().shadow());
-            invoke(data, "setTextUpdateInterval", head.hologram().refreshTicks());
-            invoke(data, "setVisibilityDistance", head.displayRange());
-            invoke(data, "setBrightness", new Display.Brightness(
-                    head.hologram().brightness().block(),
-                    head.hologram().brightness().sky()));
-            invoke(data, "setBackground", background(head.hologram().background()));
-            Object hologram = manager.getClass().getMethod("create",
-                            Class.forName("de.oliver.fancyholograms.api.data.HologramData"))
-                    .invoke(manager, data);
-            manager.getClass().getMethod("addHologram",
-                            Class.forName("de.oliver.fancyholograms.api.hologram.Hologram"))
-                    .invoke(manager, hologram);
-            return hologram;
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("FancyHolograms API setup failed", exception);
-        }
-    }
-
-    public void remove(Object hologram) {
-        if (hologram == null) {
+    public void release(Link link) {
+        if (link == null || !link.owned || link.hologram == null) {
             return;
         }
         try {
-            Class<?> hologramType = Class.forName(
-                    "de.oliver.fancyholograms.api.hologram.Hologram");
-            manager.getClass().getMethod("removeHologram", hologramType)
-                    .invoke(manager, hologram);
-            hologram.getClass().getMethod("deleteHologram").invoke(hologram);
-        } catch (ReflectiveOperationException exception) {
-            plugin.getLogger().warning("Could not remove FancyHolograms hologram: "
+            bridge.remove(link.hologram);
+        } catch (RuntimeException exception) {
+            logger.warning("Could not remove FancyHolograms hologram " + link.name + ": "
                     + exception.getMessage());
         }
+        link.hologram = null;
+    }
+
+    public List<String> linkableNames() {
+        Collection<String> all = bridge.names();
+        List<String> result = new ArrayList<>();
+        for (String name : all) {
+            if (!name.toLowerCase(Locale.ROOT).startsWith(OWNED_PREFIX)) {
+                result.add(name);
+            }
+        }
+        result.sort(String.CASE_INSENSITIVE_ORDER);
+        return result;
     }
 
     public static String nameFor(String runtimeId) {
         String safe = runtimeId.replaceAll("[^A-Za-z0-9_-]", "_");
-        return "para_rotating_head_" + (safe.length() > 48
-                ? safe.substring(0, 48) : safe);
+        return OWNED_PREFIX + (safe.length() > 48 ? safe.substring(0, 48) : safe);
     }
 
-    private List<String> lines(Hologram hologram) {
-        List<String> lines = new ArrayList<>(hologram.lines());
-        if (plugin.getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            lines.replaceAll(line -> PlaceholderAPI.setPlaceholders(null, line));
+    private boolean resolve(Head head, Link link) {
+        Object hologram = bridge.find(link.name);
+        if (hologram == null) {
+            return false;
         }
-        return lines;
-    }
-
-    private Color background(String value) {
-        if (value.equalsIgnoreCase("none")) {
-            return null;
-        }
-        if (value.equalsIgnoreCase("default")) {
-            return Color.fromARGB(0, 0, 0, 0);
-        }
-        try {
-            String hex = value.startsWith("#") ? value.substring(1) : value;
-            long color = Long.parseLong(hex, 16);
-            if (hex.length() == 6) {
-                return Color.fromRGB((int) (color >> 16) & 255,
-                        (int) (color >> 8) & 255, (int) color & 255);
-            }
-            return Color.fromARGB((int) (color >> 24) & 255,
-                    (int) (color >> 16) & 255, (int) (color >> 8) & 255,
-                    (int) color & 255);
-        } catch (NumberFormatException exception) {
-            return Color.fromARGB(0, 0, 0, 0);
-        }
-    }
-
-    private static void invoke(Object target, String name, Object value)
-            throws ReflectiveOperationException {
-        for (Method method : target.getClass().getMethods()) {
-            if (method.getName().equals(name) && method.getParameterCount() == 1) {
-                method.invoke(target, value);
-                return;
+        link.hologram = hologram;
+        if (head.hologram().followHead()) {
+            Location wanted = target(head);
+            if (!sameLocation(bridge.locationOf(hologram), wanted)) {
+                bridge.move(hologram, wanted);
             }
         }
-        throw new NoSuchMethodException(name);
+        return true;
+    }
+
+    private static Location target(Head head) {
+        return head.location().clone().add(0, head.hologram().offsetY(), 0);
+    }
+
+    private static boolean sameLocation(Location a, Location b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        if (a.getWorld() == null ? b.getWorld() != null : !a.getWorld().equals(b.getWorld())) {
+            return false;
+        }
+        return Math.abs(a.getX() - b.getX()) < MOVE_EPSILON
+                && Math.abs(a.getY() - b.getY()) < MOVE_EPSILON
+                && Math.abs(a.getZ() - b.getZ()) < MOVE_EPSILON;
     }
 }

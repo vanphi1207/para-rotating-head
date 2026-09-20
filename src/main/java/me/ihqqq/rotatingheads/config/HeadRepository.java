@@ -55,9 +55,29 @@ public final class HeadRepository {
         return result;
     }
 
+    public Map<String, Head> forWorld(String worldName) {
+        Map<String, Head> result = new LinkedHashMap<>();
+        for (String id : yaml.getKeys(false)) {
+            ConfigurationSection section = yaml.getConfigurationSection(id);
+            if (section == null
+                    || !worldName.equals(section.getString("location.world"))) {
+                continue;
+            }
+            try {
+                Head head = decode(id, section);
+                if (head != null) {
+                    result.put(id, head);
+                }
+            } catch (RuntimeException exception) {
+                plugin.getLogger().warning("Skipping malformed head " + id + ": "
+                        + exception.getMessage());
+            }
+        }
+        return result;
+    }
+
     public void save(Head head) {
         String path = head.id();
-        yaml.set(path, null);
         Location location = head.location();
         yaml.set(path + ".location.world", location.getWorld().getName());
         yaml.set(path + ".location.x", location.getX());
@@ -66,7 +86,12 @@ public final class HeadRepository {
         yaml.set(path + ".display_range", head.displayRange());
         yaml.set(path + ".options.texture", head.options().texture());
         yaml.set(path + ".options.scale", head.options().scale());
+        yaml.set(path + ".options.item", head.options().item());
         yaml.set(path + ".options.speedY", head.options().speed());
+        yaml.set(path + ".options.speedX", head.options().speedX());
+        yaml.set(path + ".options.speedZ", head.options().speedZ());
+        yaml.set(path + ".options.bob.height", head.options().bobHeight());
+        yaml.set(path + ".options.bob.period", head.options().bobPeriod());
         yaml.set(path + ".options.brightness.sky", head.options().brightness().sky());
         yaml.set(path + ".options.brightness.block", head.options().brightness().block());
         yaml.set(path + ".interaction.enable", head.interaction().enabled());
@@ -86,6 +111,8 @@ public final class HeadRepository {
         yaml.set(path + ".holograms.options.brightness.block",
                 head.hologram().brightness().block());
         yaml.set(path + ".holograms.provider", head.hologram().provider());
+        yaml.set(path + ".holograms.link", head.hologram().link());
+        yaml.set(path + ".holograms.follow_head", head.hologram().followHead());
         saveAtomic();
     }
 
@@ -117,6 +144,11 @@ public final class HeadRepository {
         double speed = options.contains("speedY")
                 ? options.getDouble("speedY") : section.getDouble("speed", 1);
         Brightness brightness = brightness(options.getConfigurationSection("brightness"));
+        double speedX = options.getDouble("speedX", 0);
+        double speedZ = options.getDouble("speedZ", 0);
+        double bobHeight = options.getDouble("bob.height", 0);
+        int bobPeriod = options.getInt("bob.period", 60);
+        String item = options.getString("item", HeadOptions.DEFAULT_ITEM);
         ConfigurationSection interaction = section.getConfigurationSection("interaction");
         Interaction interactionValue = new Interaction(interaction != null
                 && interaction.getBoolean("enable", false),
@@ -137,9 +169,12 @@ public final class HeadRepository {
                         : hologramOptions.getString("background", "default"),
                 brightness(hologramOptions == null ? null
                         : hologramOptions.getConfigurationSection("brightness")),
-                hologram == null ? "native" : hologram.getString("provider", "native"));
+                hologram == null ? "native" : hologram.getString("provider", "native"),
+                hologram == null ? "" : hologram.getString("link", ""),
+                hologram == null || hologram.getBoolean("follow_head", true));
         return new Head(id, location, section.getInt("display_range", 64),
-                new HeadOptions(texture, scale, speed, brightness), interactionValue,
+                new HeadOptions(texture, scale, speed, brightness, speedX, speedZ,
+                        bobHeight, bobPeriod, item), interactionValue,
                 hologramValue);
     }
 
