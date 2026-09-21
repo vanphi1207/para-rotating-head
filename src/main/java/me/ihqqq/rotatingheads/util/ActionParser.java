@@ -8,17 +8,6 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.List;
 
-/**
- * Runs the action lines of a head for a player. Supported forms (tags can be chained):
- * <pre>
- * [console] command     run as console (default when no tag is given)
- * [player] command      run as the player
- * [message] text        MiniMessage text sent to the player
- * [sound] key[:vol[:pitch]]
- * [delay:ticks]         wait before running
- * [permission:node]     only run if the player has the permission
- * </pre>
- */
 public final class ActionParser {
     private ActionParser() {
     }
@@ -56,7 +45,6 @@ public final class ActionParser {
 
     private static void playSound(Player player, String spec) {
         String[] parts = spec.split(":");
-        // "minecraft:entity.player.levelup:1:1" -> namespace and key share a colon.
         int keyParts = parts.length > 1 && !isNumber(parts[1]) ? 2 : 1;
         StringBuilder key = new StringBuilder(parts[0]);
         for (int i = 1; i < keyParts; i++) {
@@ -89,7 +77,6 @@ public final class ActionParser {
                 ? Papi.apply(player, text) : text;
     }
 
-    /** Isolated so PlaceholderAPI is only loaded when it is installed. */
     private static final class Papi {
         static String apply(Player player, String text) {
             return PlaceholderAPI.setPlaceholders(player, text);

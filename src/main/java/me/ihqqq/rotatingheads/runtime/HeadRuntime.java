@@ -404,11 +404,6 @@ public final class HeadRuntime {
         }
     }
 
-    /**
-     * How far the display origin sits above the centre of the rendered head. The model
-     * hangs below the origin, so anything that wants to line up with what the player
-     * actually sees has to add this.
-     */
     public static double renderOffsetY(HeadOptions options) {
         return -HEAD_CENTER_Y * options.scale();
     }
@@ -419,32 +414,22 @@ public final class HeadRuntime {
         }
         HeadOptions options = head.options();
         double scale = options.scale();
-        // Extents of the swept volume, measured from the display origin.
         double halfWidth = HEAD_HALF_WIDTH * scale;
         double bottom = HEAD_BOTTOM * scale;
         double top = HEAD_TOP * scale;
         if (options.speedX() != 0 || options.speedZ() != 0) {
-            // Rotation happens about the display origin, not about the head's own
-            // centre. Tilting off the vertical axis therefore orbits the model around
-            // the origin, and the swept volume is the sphere through its farthest
-            // corner, centred on the origin.
             double radius = CORNER_RADIUS * scale;
             halfWidth = radius;
             bottom = -radius;
             top = radius;
         } else if (options.speed() != 0) {
-            // Spinning around Y only: the model is centred on that axis, so the corners
-            // sweep out to the face diagonal and the vertical extent is unchanged.
             halfWidth *= FACE_DIAGONAL;
         }
-        // Bobbing is a world-space translation, so it is not affected by scale.
         bottom -= options.bobHeight();
         top += options.bobHeight();
 
         float boxWidth = (float) Math.max(MIN_INTERACTION_SIZE, 2 * halfWidth);
         float boxHeight = (float) Math.max(MIN_INTERACTION_SIZE, top - bottom);
-        // Interaction entities are anchored at their bottom face, so drop the spawn
-        // point to the bottom of the swept volume.
         double centerY = (top + bottom) / 2.0;
         Location location = head.location().clone().add(0, centerY - boxHeight / 2.0, 0);
         return location.getWorld().spawn(location, Interaction.class, entity -> {
@@ -489,7 +474,6 @@ public final class HeadRuntime {
         return item;
     }
 
-    /** Unlike Location#getChunk, this never loads the chunk. */
     private static boolean isChunkLoaded(Location location) {
         World world = location.getWorld();
         return world != null
