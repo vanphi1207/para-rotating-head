@@ -2,9 +2,9 @@ package me.ihqqq.rotatingheads.listener;
 
 import me.ihqqq.rotatingheads.config.HeadRepository;
 import me.ihqqq.rotatingheads.config.SettingsHolder;
-import me.ihqqq.rotatingheads.model.HeadModels.Head;
-import me.ihqqq.rotatingheads.runtime.HeadRuntime;
-import me.ihqqq.rotatingheads.util.ActionParser;
+import me.ihqqq.rotatingheads.model.Head;
+import me.ihqqq.rotatingheads.manager.HeadManager;
+import me.ihqqq.rotatingheads.action.ActionParser;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -23,17 +23,17 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class HeadListener implements Listener {
-    private final HeadRuntime runtime;
+    private final HeadManager headManager;
     private final Map<String, Head> heads;
     private final HeadRepository repository;
     private final SettingsHolder settings;
     private final Plugin plugin;
     private final Map<UUID, Long> lastClick = new HashMap<>();
 
-    public HeadListener(Plugin plugin, HeadRuntime runtime, Map<String, Head> heads,
+    public HeadListener(Plugin plugin, HeadManager headManager, Map<String, Head> heads,
                         HeadRepository repository, SettingsHolder settings) {
         this.plugin = plugin;
-        this.runtime = runtime;
+        this.headManager = headManager;
         this.heads = heads;
         this.repository = repository;
         this.settings = settings;
@@ -41,12 +41,12 @@ public final class HeadListener implements Listener {
 
     @EventHandler
     public void onChunkLoad(ChunkLoadEvent event) {
-        runtime.onChunkLoad(event.getChunk());
+        headManager.onChunkLoad(event.getChunk());
     }
 
     @EventHandler
     public void onChunkUnload(ChunkUnloadEvent event) {
-        runtime.onChunkUnload(event.getChunk());
+        headManager.onChunkUnload(event.getChunk());
     }
 
     @EventHandler
@@ -54,7 +54,7 @@ public final class HeadListener implements Listener {
         for (Head head : repository.forWorld(event.getWorld().getName()).values()) {
             if (!heads.containsKey(head.id())) {
                 heads.put(head.id(), head);
-                runtime.register(head);
+                headManager.register(head);
             }
         }
     }
@@ -69,7 +69,7 @@ public final class HeadListener implements Listener {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
-        String id = runtime.headForInteraction(event.getRightClicked().getUniqueId());
+        String id = headManager.headForInteraction(event.getRightClicked().getUniqueId());
         if (id == null) {
             return;
         }
@@ -82,7 +82,7 @@ public final class HeadListener implements Listener {
         if (!(event.getDamager() instanceof Player player)) {
             return;
         }
-        String id = runtime.headForInteraction(event.getEntity().getUniqueId());
+        String id = headManager.headForInteraction(event.getEntity().getUniqueId());
         if (id == null) {
             return;
         }

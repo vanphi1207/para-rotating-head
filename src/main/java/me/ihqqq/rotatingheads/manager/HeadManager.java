@@ -1,11 +1,11 @@
-package me.ihqqq.rotatingheads.runtime;
+package me.ihqqq.rotatingheads.manager;
 
-import me.ihqqq.rotatingheads.model.HeadModels.Head;
-import me.ihqqq.rotatingheads.model.HeadModels.Hologram;
+import me.ihqqq.rotatingheads.model.Head;
+import me.ihqqq.rotatingheads.model.Hologram;
 import me.ihqqq.rotatingheads.hook.FancyHologramHook;
-import me.ihqqq.rotatingheads.model.HeadModels.HeadOptions;
+import me.ihqqq.rotatingheads.model.HeadOptions;
 import me.ihqqq.rotatingheads.util.HeadUtil;
-import me.ihqqq.rotatingheads.util.MessageException;
+import me.ihqqq.rotatingheads.exception.MessageException;
 import me.ihqqq.rotatingheads.util.TextureUtil;
 import me.clip.placeholderapi.PlaceholderAPI;
 import net.kyori.adventure.text.Component;
@@ -39,7 +39,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-public final class HeadRuntime {
+public final class HeadManager {
     private static final double MAX_STEP_DEGREES = 60.0;
     private static final int LINK_CHECK_TICKS = 100;
     private static final int MAX_INTERVAL_TICKS = 40;
@@ -67,7 +67,7 @@ public final class HeadRuntime {
     private boolean linkWarningLogged;
     private boolean linkErrorLogged;
 
-    public HeadRuntime(JavaPlugin plugin) {
+    public HeadManager(JavaPlugin plugin) {
         this.plugin = plugin;
         entityKey = new NamespacedKey(plugin, "head_id");
         fancyHolograms = FancyHologramHook.connect(plugin);

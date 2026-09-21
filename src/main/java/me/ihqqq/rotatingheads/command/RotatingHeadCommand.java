@@ -3,14 +3,14 @@ package me.ihqqq.rotatingheads.command;
 import me.ihqqq.rotatingheads.config.HeadRepository;
 import me.ihqqq.rotatingheads.config.Language;
 import me.ihqqq.rotatingheads.config.SettingsHolder;
-import me.ihqqq.rotatingheads.model.HeadModels.Brightness;
-import me.ihqqq.rotatingheads.model.HeadModels.Head;
-import me.ihqqq.rotatingheads.model.HeadModels.HeadOptions;
-import me.ihqqq.rotatingheads.model.HeadModels.Hologram;
-import me.ihqqq.rotatingheads.model.HeadModels.Interaction;
-import me.ihqqq.rotatingheads.runtime.HeadRuntime;
+import me.ihqqq.rotatingheads.model.Brightness;
+import me.ihqqq.rotatingheads.model.Head;
+import me.ihqqq.rotatingheads.model.HeadOptions;
+import me.ihqqq.rotatingheads.model.Hologram;
+import me.ihqqq.rotatingheads.model.Interaction;
+import me.ihqqq.rotatingheads.manager.HeadManager;
 import me.ihqqq.rotatingheads.util.HeadUtil;
-import me.ihqqq.rotatingheads.util.MessageException;
+import me.ihqqq.rotatingheads.exception.MessageException;
 import me.ihqqq.rotatingheads.util.TabUtil;
 import me.ihqqq.rotatingheads.util.TextureUtil;
 import net.kyori.adventure.text.Component;
@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-public final class PrhCommand implements CommandExecutor, TabCompleter {
+public final class RotatingHeadCommand implements CommandExecutor, TabCompleter {
     private static final String PERMISSION = "rotatingheads.admin";
     private static final List<String> SUBCOMMANDS = List.of("reload", "list", "info", "near",
             "create", "clone", "edit", "teleport", "movehere", "center", "delete");
@@ -42,16 +42,16 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
     private static final List<String> BOOLEANS = List.of("true", "false");
 
     private final HeadRepository repository;
-    private final HeadRuntime runtime;
+    private final HeadManager headManager;
     private final Map<String, Head> heads;
     private final SettingsHolder settings;
     private final Language language;
 
-    public PrhCommand(HeadRepository repository, HeadRuntime runtime,
-                      Map<String, Head> heads, SettingsHolder settings,
-                      Language language) {
+    public RotatingHeadCommand(HeadRepository repository, HeadManager headManager,
+                               Map<String, Head> heads, SettingsHolder settings,
+                               Language language) {
         this.repository = repository;
-        this.runtime = runtime;
+        this.headManager = headManager;
         this.heads = heads;
         this.settings = settings;
         this.language = language;
@@ -100,10 +100,10 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(language.message("command.reload-failed"));
             return;
         }
-        runtime.reset();
+        headManager.reset();
         heads.clear();
         heads.putAll(repository.all());
-        runtime.load(heads);
+        headManager.load(heads);
         sender.sendMessage(language.message("command.reload"));
     }
 
@@ -129,7 +129,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
         if (args.length < 2) {
             sender.sendMessage(language.message("command.info", "configured",
                     String.valueOf(heads.size()), "indexed",
-                    String.valueOf(runtime.activeIds().size())));
+                    String.valueOf(headManager.activeIds().size())));
             return;
         }
         Head head = requireHead(args[1]);
@@ -154,7 +154,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
                 "provider", hologram.provider(),
                 "lines", String.valueOf(hologram.lines().size())));
         if (hologram.linked()) {
-            sender.sendMessage(language.message(runtime.linkActive(head.id())
+            sender.sendMessage(language.message(headManager.linkActive(head.id())
                             ? "command.link-linked" : "command.link-waiting",
                     "link", hologram.link(), "follow", String.valueOf(hologram.followHead())));
         }
@@ -274,7 +274,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
         store(updated);
         sender.sendMessage(language.message("command.updated", "id", updated.id()));
         if (option.equals("link") && updated.hologram().linked()) {
-            if (!runtime.fancyAvailable()) {
+            if (!headManager.fancyAvailable()) {
                 sender.sendMessage(language.message("command.fancy-missing"));
             }
             if (!updated.hologram().enabled()) {
@@ -323,7 +323,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
         if (heads.remove(id) == null) {
             throw new MessageException("command.unknown", "id", id);
         }
-        runtime.remove(id);
+        headManager.remove(id);
         repository.remove(id);
         sender.sendMessage(language.message("command.deleted", "id", id));
     }
@@ -347,7 +347,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
         require(args, 2);
         Head head = requireHead(args[1]);
         Location centered = HeadUtil.blockCenter(head.location())
-                .add(0, HeadRuntime.renderOffsetY(head.options()), 0);
+                .add(0, HeadManager.renderOffsetY(head.options()), 0);
         store(head.at(centered));
         sender.sendMessage(language.message("command.centered", "id", head.id(),
                 "x", HeadUtil.format(centered.getX()),
@@ -358,7 +358,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
     private void store(Head head) {
         heads.put(head.id(), head);
         repository.save(head);
-        runtime.register(head);
+        headManager.register(head);
     }
 
     private Player player(CommandSender sender) {
@@ -486,7 +486,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
             case "provider" -> PROVIDERS;
             case "link" -> {
                 List<String> names = new ArrayList<>(List.of("none"));
-                names.addAll(runtime.linkableHolograms());
+                names.addAll(headManager.linkableHolograms());
                 yield names;
             }
             case "follow" -> BOOLEANS;

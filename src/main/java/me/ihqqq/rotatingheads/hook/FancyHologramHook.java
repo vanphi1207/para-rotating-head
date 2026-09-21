@@ -1,6 +1,6 @@
 package me.ihqqq.rotatingheads.hook;
 
-import me.ihqqq.rotatingheads.model.HeadModels.Head;
+import me.ihqqq.rotatingheads.model.Head;
 import org.bukkit.Location;
 import org.bukkit.plugin.java.JavaPlugin;
 

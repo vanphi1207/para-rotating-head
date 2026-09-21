@@ -1,4 +1,4 @@
-package me.ihqqq.rotatingheads.util;
+package me.ihqqq.rotatingheads.action;
 
 import me.clip.placeholderapi.PlaceholderAPI;
 import net.kyori.adventure.text.minimessage.MiniMessage;

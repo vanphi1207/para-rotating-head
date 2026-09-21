@@ -1,10 +1,10 @@
 package me.ihqqq.rotatingheads.config;
 
-import me.ihqqq.rotatingheads.model.HeadModels.Brightness;
-import me.ihqqq.rotatingheads.model.HeadModels.Head;
-import me.ihqqq.rotatingheads.model.HeadModels.HeadOptions;
-import me.ihqqq.rotatingheads.model.HeadModels.Hologram;
-import me.ihqqq.rotatingheads.model.HeadModels.Interaction;
+import me.ihqqq.rotatingheads.model.Brightness;
+import me.ihqqq.rotatingheads.model.Head;
+import me.ihqqq.rotatingheads.model.HeadOptions;
+import me.ihqqq.rotatingheads.model.Hologram;
+import me.ihqqq.rotatingheads.model.Interaction;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;

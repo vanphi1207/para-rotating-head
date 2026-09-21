@@ -1,4 +1,4 @@
-package me.ihqqq.rotatingheads.util;
+package me.ihqqq.rotatingheads.exception;
 
 public final class MessageException extends IllegalArgumentException {
     private static final long serialVersionUID = 1L;

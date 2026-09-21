@@ -1,6 +1,6 @@
 package me.ihqqq.rotatingheads.hook;
 
-import me.ihqqq.rotatingheads.model.HeadModels.Hologram;
+import me.ihqqq.rotatingheads.model.Hologram;
 import org.bukkit.Location;
 
 import java.util.Collection;

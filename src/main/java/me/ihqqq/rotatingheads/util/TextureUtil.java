@@ -1,5 +1,7 @@
 package me.ihqqq.rotatingheads.util;
 
+import me.ihqqq.rotatingheads.exception.MessageException;
+
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;

@@ -1,5 +1,7 @@
 package me.ihqqq.rotatingheads.util;
 
+import me.ihqqq.rotatingheads.exception.MessageException;
+
 import org.bukkit.Location;
 
 import java.util.Locale;

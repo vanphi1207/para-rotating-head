@@ -1,4 +1,4 @@
-package me.ihqqq.rotatingheads.util;
+package me.ihqqq.rotatingheads.action;
 
 import java.util.Locale;
 
