@@ -23,10 +23,15 @@ public record Hologram(boolean enabled, double offsetY, int refreshTicks,
     }
 
     public Hologram {
+        offsetY = Double.isFinite(offsetY) ? offsetY : 1;
         refreshTicks = Math.max(0, Math.min(72000, refreshTicks));
         scale = Math.max(0.05, Math.min(20, scale));
+        if (!Double.isFinite(scale)) {
+            scale = 1;
+        }
         lines = List.copyOf(lines == null ? List.of() : lines);
         background = background == null ? "default" : background;
+        brightness = brightness == null ? new Brightness(15, 15) : brightness;
         provider = provider == null ? "native" : provider.toLowerCase(Locale.ROOT);
         if (!provider.equals("native") && !provider.equals("fancyholograms")) {
             provider = "native";

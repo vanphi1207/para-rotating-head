@@ -24,7 +24,7 @@ public final class ActionSyntax {
         while (text.startsWith("[")) {
             int end = text.indexOf(']');
             if (end < 0) {
-                break;
+                return null;
             }
             String tag = text.substring(1, end).trim();
             String lower = tag.toLowerCase(Locale.ROOT);
@@ -39,13 +39,13 @@ public final class ActionSyntax {
             } else if (lower.startsWith("delay:")) {
                 Integer parsed = parseDelay(tag.substring(6));
                 if (parsed == null) {
-                    break;
+                    return null;
                 }
                 delay = parsed;
             } else if (lower.startsWith("permission:") && tag.length() > 11) {
                 permission = tag.substring(11).trim();
             } else {
-                break;
+                return null;
             }
             text = text.substring(end + 1).trim();
         }

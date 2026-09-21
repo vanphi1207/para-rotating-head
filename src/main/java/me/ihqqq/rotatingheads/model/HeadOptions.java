@@ -5,12 +5,17 @@ public record HeadOptions(String texture, double scale, double speed,
                           double bobHeight, int bobPeriod) {
     public HeadOptions {
         texture = texture == null ? "" : texture.trim();
-        scale = Math.max(0.05, Math.min(20, scale));
-        speed = Math.max(-20, Math.min(20, speed));
-        speedX = Math.max(-20, Math.min(20, speedX));
-        speedZ = Math.max(-20, Math.min(20, speedZ));
-        bobHeight = Math.max(0, Math.min(5, bobHeight));
+        brightness = brightness == null ? new Brightness(15, 15) : brightness;
+        scale = bounded(scale, 2, 0.05, 20);
+        speed = bounded(speed, 0, -20, 20);
+        speedX = bounded(speedX, 0, -20, 20);
+        speedZ = bounded(speedZ, 0, -20, 20);
+        bobHeight = bounded(bobHeight, 0, 0, 5);
         bobPeriod = Math.max(10, Math.min(1200, bobPeriod));
+    }
+
+    private static double bounded(double value, double fallback, double min, double max) {
+        return !Double.isFinite(value) ? fallback : Math.max(min, Math.min(max, value));
     }
 
     public HeadOptions(String texture, double scale, double speed,

@@ -5,6 +5,7 @@ import me.ihqqq.rotatingheads.model.Head;
 import me.ihqqq.rotatingheads.model.HeadOptions;
 import me.ihqqq.rotatingheads.model.Hologram;
 import me.ihqqq.rotatingheads.model.Interaction;
+import me.ihqqq.rotatingheads.util.HeadUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -51,9 +52,20 @@ public final class HeadRepository {
 
     public Map<String, Head> all() {
         Map<String, Head> result = new LinkedHashMap<>();
-        for (String id : yaml.getKeys(false)) {
+        for (String rawId : yaml.getKeys(false)) {
+            final String id;
             try {
-                Head head = decode(id, yaml.getConfigurationSection(id));
+                id = HeadUtil.normalizeId(rawId);
+            } catch (RuntimeException exception) {
+                plugin.getLogger().warning("Skipping malformed head " + rawId + ": invalid id");
+                continue;
+            }
+            if (result.containsKey(id)) {
+                plugin.getLogger().warning("Skipping duplicate head id after normalization: " + rawId);
+                continue;
+            }
+            try {
+                Head head = decode(id, yaml.getConfigurationSection(rawId));
                 if (head != null) {
                     result.put(id, head);
                 }
@@ -67,8 +79,14 @@ public final class HeadRepository {
 
     public Map<String, Head> forWorld(String worldName) {
         Map<String, Head> result = new LinkedHashMap<>();
-        for (String id : yaml.getKeys(false)) {
-            ConfigurationSection section = yaml.getConfigurationSection(id);
+        for (String rawId : yaml.getKeys(false)) {
+            final String id;
+            try {
+                id = HeadUtil.normalizeId(rawId);
+            } catch (RuntimeException exception) {
+                continue;
+            }
+            ConfigurationSection section = yaml.getConfigurationSection(rawId);
             if (section == null
                     || !worldName.equals(section.getString("location.world"))) {
                 continue;
@@ -76,6 +94,11 @@ public final class HeadRepository {
             try {
                 Head head = decode(id, section);
                 if (head != null) {
+                    if (result.containsKey(id)) {
+                        plugin.getLogger().warning(
+                                "Skipping duplicate head id after normalization: " + rawId);
+                        continue;
+                    }
                     result.put(id, head);
                 }
             } catch (RuntimeException exception) {

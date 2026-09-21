@@ -6,6 +6,13 @@ public record Head(String id, Location location, int displayRange,
                    HeadOptions options, Interaction interaction,
                    Hologram hologram) {
     public Head {
+        if (location == null || location.getWorld() == null) {
+            throw new IllegalArgumentException("location must have a loaded world");
+        }
+        if (!Double.isFinite(location.getX()) || !Double.isFinite(location.getY())
+                || !Double.isFinite(location.getZ())) {
+            throw new IllegalArgumentException("location coordinates must be finite");
+        }
         location = location.clone();
         location.setYaw(0);
         location.setPitch(0);

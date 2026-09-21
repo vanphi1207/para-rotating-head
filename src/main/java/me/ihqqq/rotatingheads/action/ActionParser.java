@@ -24,12 +24,21 @@ public final class ActionParser {
             if (action.delayTicks() > 0) {
                 Bukkit.getScheduler().runTaskLater(plugin, () -> {
                     if (player.isOnline()) {
-                        run(action, player);
+                        runSafely(plugin, action, player);
                     }
                 }, action.delayTicks());
             } else {
-                run(action, player);
+                runSafely(plugin, action, player);
             }
+        }
+    }
+
+    private static void runSafely(Plugin plugin, ActionSyntax.Action action, Player player) {
+        try {
+            run(action, player);
+        } catch (RuntimeException exception) {
+            plugin.getLogger().warning("Could not execute " + action.type().name().toLowerCase()
+                    + " action for " + player.getName() + ": " + exception.getMessage());
         }
     }
 

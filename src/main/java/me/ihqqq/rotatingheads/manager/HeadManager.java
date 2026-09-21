@@ -66,6 +66,7 @@ public final class HeadManager {
     private boolean fancyWarningLogged;
     private boolean linkWarningLogged;
     private boolean linkErrorLogged;
+    private boolean hologramWarningLogged;
 
     public HeadManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -76,6 +77,14 @@ public final class HeadManager {
     }
 
     public void load(Map<String, Head> heads) {
+        for (String id : List.copyOf(spawned.keySet())) {
+            removeSpawned(id);
+        }
+        spawned.clear();
+        interactions.clear();
+        chunkIndex.clear();
+        headChunk.clear();
+        skullCache.clear();
         configured.clear();
         configured.putAll(heads);
         for (Head head : heads.values()) {
@@ -288,9 +297,20 @@ public final class HeadManager {
 
     private void rotateAll() {
         tick++;
-        for (SpawnedHead head : spawned.values()) {
+        for (String id : List.copyOf(spawned.keySet())) {
+            SpawnedHead head = spawned.get(id);
+            if (head == null) {
+                continue;
+            }
             ItemDisplay item = head.item();
-            if (!item.isValid()) {
+            if (!item.isValid()
+                    || (head.hologram() != null && !head.hologram().isValid())
+                    || (head.interaction() != null && !head.interaction().isValid())) {
+                removeSpawned(id);
+                Head configuredHead = configured.get(id);
+                if (configuredHead != null && isChunkLoaded(configuredHead.location())) {
+                    spawnConfigured(configuredHead);
+                }
                 continue;
             }
             Schedule schedule = head.schedule();
@@ -370,10 +390,19 @@ public final class HeadManager {
 
     private Component renderText(Hologram hologram) {
         String text = String.join("\n", hologram.lines());
-        if (plugin.getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            text = PlaceholderAPI.setPlaceholders(null, text);
+        try {
+            if (plugin.getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+                text = PlaceholderAPI.setPlaceholders(null, text);
+            }
+            return MiniMessage.miniMessage().deserialize(text);
+        } catch (RuntimeException exception) {
+            if (!hologramWarningLogged) {
+                hologramWarningLogged = true;
+                plugin.getLogger().warning("Could not render a hologram line; displaying its "
+                        + "literal text instead: " + exception.getMessage());
+            }
+            return Component.text(text);
         }
-        return MiniMessage.miniMessage().deserialize(text);
     }
 
     private void applyBackground(TextDisplay display, String value) {

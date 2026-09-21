@@ -319,7 +319,7 @@ public final class RotatingHeadCommand implements CommandExecutor, TabCompleter 
 
     private void delete(CommandSender sender, String[] args) {
         require(args, 2);
-        String id = args[1];
+        String id = HeadUtil.normalizeId(args[1]);
         if (heads.remove(id) == null) {
             throw new MessageException("command.unknown", "id", id);
         }
@@ -369,9 +369,10 @@ public final class RotatingHeadCommand implements CommandExecutor, TabCompleter 
     }
 
     private Head requireHead(String id) {
-        Head head = heads.get(id);
+        String normalized = HeadUtil.normalizeId(id);
+        Head head = heads.get(normalized);
         if (head == null) {
-            throw new MessageException("command.unknown", "id", id);
+            throw new MessageException("command.unknown", "id", normalized);
         }
         return head;
     }
