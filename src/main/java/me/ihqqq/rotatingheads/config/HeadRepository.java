@@ -9,6 +9,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -25,18 +26,27 @@ import java.util.Map;
 public final class HeadRepository {
     private final JavaPlugin plugin;
     private final File file;
-    private FileConfiguration yaml;
+    private FileConfiguration yaml = new YamlConfiguration();
 
     public HeadRepository(JavaPlugin plugin) {
         this.plugin = plugin;
         file = new File(plugin.getDataFolder(), "heads.yml");
     }
 
-    public void load() {
+    public boolean load() {
         if (!file.exists()) {
             plugin.saveResource("heads.yml", false);
         }
-        yaml = YamlConfiguration.loadConfiguration(file);
+        YamlConfiguration loaded = new YamlConfiguration();
+        try {
+            loaded.load(file);
+        } catch (IOException | InvalidConfigurationException exception) {
+            plugin.getLogger().severe("Could not parse heads.yml, keeping the "
+                    + "previously loaded heads untouched: " + exception.getMessage());
+            return false;
+        }
+        yaml = loaded;
+        return true;
     }
 
     public Map<String, Head> all() {

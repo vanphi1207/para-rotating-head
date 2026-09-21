@@ -13,11 +13,14 @@ import java.util.List;
 
 public final class Language {
     private static final List<String> BUNDLED_LANGUAGES = List.of("en_us", "vi_vn");
+    private static final String DEFAULT_PREFIX =
+            "<dark_gray>[<gold>ParaRotatingHead</gold><dark_gray>]</dark_gray> ";
 
     private final JavaPlugin plugin;
     private final SettingsHolder settings;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private YamlConfiguration messages;
+    private Component prefix;
 
     public Language(JavaPlugin plugin, SettingsHolder settings) {
         this.plugin = plugin;
@@ -54,6 +57,7 @@ public final class Language {
             loaded.options().copyDefaults(false);
         }
         messages = loaded;
+        prefix = miniMessage.deserialize(messages.getString("prefix", DEFAULT_PREFIX));
     }
 
     private YamlConfiguration readBundled(String name) {
@@ -69,6 +73,10 @@ public final class Language {
     }
 
     public Component message(String key, String... replacements) {
+        return prefix.append(fragment(key, replacements));
+    }
+
+    public Component fragment(String key, String... replacements) {
         String value = messages.getString(key);
         if (value == null) {
             value = "<red>Missing message: " + key;

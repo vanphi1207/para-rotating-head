@@ -8,7 +8,7 @@ softdepend: [PlaceholderAPI, FancyHolograms]
 commands:
   prh:
     description: Manage rotating heads
-    usage: /prh <reload|list|info|near|create|clone|edit|teleport|movehere|center|delete|benchmark>
+    usage: /prh <reload|list|info|near|create|clone|edit|teleport|movehere|center|delete>
     permission: rotatingheads.admin
 permissions:
   rotatingheads.admin:

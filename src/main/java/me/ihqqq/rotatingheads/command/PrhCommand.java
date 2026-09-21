@@ -32,8 +32,7 @@ import java.util.Map;
 public final class PrhCommand implements CommandExecutor, TabCompleter {
     private static final String PERMISSION = "rotatingheads.admin";
     private static final List<String> SUBCOMMANDS = List.of("reload", "list", "info", "near",
-            "create", "clone", "edit", "teleport", "movehere", "center", "delete",
-            "benchmark");
+            "create", "clone", "edit", "teleport", "movehere", "center", "delete");
     private static final List<String> EDIT_OPTIONS = List.of("texture", "scale",
             "speed", "speedx", "speedz", "bobheight", "bobperiod", "brightness", "range",
             "interaction", "hologram", "offsety", "refresh", "provider", "link", "follow",
@@ -82,7 +81,6 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
                 case "movehere" -> move(sender, args);
                 case "center" -> center(sender, args);
                 case "delete" -> delete(sender, args);
-                case "benchmark" -> benchmark(sender, args);
                 default -> sender.sendMessage(language.message("command.usage"));
             }
         } catch (MessageException exception) {
@@ -98,8 +96,11 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
     private void reload(CommandSender sender) {
         settings.reload();
         language.reload();
+        if (!repository.load()) {
+            sender.sendMessage(language.message("command.reload-failed"));
+            return;
+        }
         runtime.reset();
-        repository.load();
         heads.clear();
         heads.putAll(repository.all());
         runtime.load(heads);
@@ -118,7 +119,7 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
             if (!first) {
                 line = line.append(Component.text(", ", NamedTextColor.DARK_GRAY));
             }
-            line = line.append(language.message("command.list-entry", "id", id));
+            line = line.append(language.fragment("command.list-entry", "id", id));
             first = false;
         }
         sender.sendMessage(line);
@@ -354,20 +355,6 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
                 "z", HeadUtil.format(centered.getZ())));
     }
 
-    private void benchmark(CommandSender sender, String[] args) {
-        Player player = player(sender);
-        require(args, 2);
-        if ("clear".equalsIgnoreCase(args[1])) {
-            runtime.clearBenchmarks();
-            sender.sendMessage(language.message("command.benchmark-cleared"));
-            return;
-        }
-        int count = args.length > 2 ? HeadUtil.boundedInt(args[2], 1, 500) : 100;
-        runtime.spawnBenchmark(requireHead(args[1]), player.getLocation(), count);
-        sender.sendMessage(language.message("command.benchmark-spawned", "count",
-                String.valueOf(count)));
-    }
-
     private void store(Head head) {
         heads.put(head.id(), head);
         repository.save(head);
@@ -409,7 +396,6 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
             case "movehere" -> "/prh movehere <id>";
             case "center" -> "/prh center <id>";
             case "delete" -> "/prh delete <id>";
-            case "benchmark" -> "/prh benchmark <id> [count] | /prh benchmark clear";
             default -> "/prh <" + String.join("|", SUBCOMMANDS) + ">";
         };
     }
@@ -434,17 +420,6 @@ public final class PrhCommand implements CommandExecutor, TabCompleter {
                 return args.length == 2
                         ? TabUtil.filter(List.of("16", "32", "64", "128", "256"), current)
                         : List.of();
-            }
-            case "benchmark" -> {
-                if (args.length == 2) {
-                    List<String> options = new ArrayList<>(heads.keySet());
-                    options.add("clear");
-                    return TabUtil.filter(options, current);
-                }
-                if (args.length == 3 && !"clear".equalsIgnoreCase(args[1])) {
-                    return TabUtil.filter(List.of("10", "50", "100", "250", "500"), current);
-                }
-                return List.of();
             }
             case "edit" -> {
                 return completeEdit(args, current);

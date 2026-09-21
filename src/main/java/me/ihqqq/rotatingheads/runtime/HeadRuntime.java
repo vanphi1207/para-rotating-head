@@ -43,18 +43,13 @@ public final class HeadRuntime {
     private static final double MAX_STEP_DEGREES = 60.0;
     private static final int LINK_CHECK_TICKS = 100;
     private static final int MAX_INTERVAL_TICKS = 40;
-    // The PLAYER_HEAD model fills x/z 4..12 and y 0..8 of the 16-unit item cube. Measured
-    // from the display origin (the cube's centre) it is therefore half a block wide and
-    // sits entirely below the origin, spanning y -0.5..0 at scale 1.
     private static final double HEAD_HALF_WIDTH = 0.25;
     private static final double HEAD_BOTTOM = -0.5;
     private static final double HEAD_TOP = 0.0;
     private static final double HEAD_CENTER_Y = (HEAD_TOP + HEAD_BOTTOM) / 2.0;
-    /** Distance from the display origin to the model's farthest corner. */
     private static final double CORNER_RADIUS = Math.sqrt(
             2 * HEAD_HALF_WIDTH * HEAD_HALF_WIDTH + HEAD_BOTTOM * HEAD_BOTTOM);
     private static final double FACE_DIAGONAL = Math.sqrt(2);
-    /** Floor so a very small head stays clickable. */
     private static final double MIN_INTERACTION_SIZE = 0.25;
 
     private final JavaPlugin plugin;
@@ -63,7 +58,6 @@ public final class HeadRuntime {
     private final Map<String, SpawnedHead> spawned = new HashMap<>();
     private final Map<UUID, String> interactions = new HashMap<>();
     private final Map<String, Set<String>> chunkIndex = new HashMap<>();
-    private final Set<String> benchmarkIds = new HashSet<>();
     private final Map<String, String> headChunk = new HashMap<>();
     private final Map<String, ItemStack> skullCache = new HashMap<>();
     private long tick;
@@ -141,34 +135,6 @@ public final class HeadRuntime {
         return List.copyOf(configured.keySet());
     }
 
-    public void spawnBenchmark(Head source, Location center, int count) {
-        clearBenchmarks();
-        int side = (int) Math.ceil(Math.sqrt(count));
-        double spacing = source.options().scale() * 1.5;
-        for (int index = 0; index < count; index++) {
-            Location location = center.clone().add((index % side) * spacing, 1,
-                    (index / side) * spacing);
-            String id = "benchmark-" + UUID.randomUUID();
-            Head copy = source.at(location);
-            if (copy.hologram().linked()) {
-                // 500 copies must not fight over (and move) one existing hologram.
-                copy = copy.withHologram(copy.hologram().withLink(""));
-            }
-            SpawnedHead instance = spawn(copy, id);
-            if (instance != null) {
-                spawned.put(id, instance);
-                benchmarkIds.add(id);
-            }
-        }
-    }
-
-    public void clearBenchmarks() {
-        for (String id : List.copyOf(benchmarkIds)) {
-            removeSpawned(id);
-        }
-        benchmarkIds.clear();
-    }
-
     public void cleanupOrphans() {
         for (World world : Bukkit.getWorlds()) {
             for (Entity entity : world.getEntities()) {
@@ -182,7 +148,6 @@ public final class HeadRuntime {
 
     public void close() {
         rotationTask.cancel();
-        clearBenchmarks();
         for (String id : List.copyOf(spawned.keySet())) {
             removeSpawned(id);
         }
@@ -194,7 +159,6 @@ public final class HeadRuntime {
     }
 
     public void reset() {
-        clearBenchmarks();
         for (String id : List.copyOf(spawned.keySet())) {
             removeSpawned(id);
         }

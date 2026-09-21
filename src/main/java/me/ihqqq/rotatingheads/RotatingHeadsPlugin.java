@@ -25,7 +25,10 @@ public final class RotatingHeadsPlugin extends JavaPlugin {
         SettingsHolder settings = new SettingsHolder(new SettingsLoader(this));
         Language language = new Language(this, settings);
         repository = new HeadRepository(this);
-        repository.load();
+        if (!repository.load()) {
+            getLogger().severe("Starting with no heads loaded; fix heads.yml and run "
+                    + "/prh reload once it is valid.");
+        }
         heads.putAll(repository.all());
         runtime = new HeadRuntime(this);
         runtime.cleanupOrphans();
