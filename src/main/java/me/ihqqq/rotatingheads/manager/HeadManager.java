@@ -4,6 +4,8 @@ import me.ihqqq.rotatingheads.model.Head;
 import me.ihqqq.rotatingheads.model.Hologram;
 import me.ihqqq.rotatingheads.hook.FancyHologramHook;
 import me.ihqqq.rotatingheads.model.HeadOptions;
+import me.ihqqq.rotatingheads.config.SettingsHolder;
+import me.ihqqq.rotatingheads.util.BedrockDetector;
 import me.ihqqq.rotatingheads.util.HeadUtil;
 import me.ihqqq.rotatingheads.exception.MessageException;
 import me.ihqqq.rotatingheads.util.TextureUtil;
@@ -14,12 +16,17 @@ import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Registry;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Interaction;
 import org.bukkit.entity.ItemDisplay;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.SkullMeta;
@@ -27,6 +34,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.profile.PlayerProfile;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.EulerAngle;
 import org.bukkit.util.Transformation;
 
 import java.net.URI;
@@ -51,8 +59,15 @@ public final class HeadManager {
             2 * HEAD_HALF_WIDTH * HEAD_HALF_WIDTH + HEAD_BOTTOM * HEAD_BOTTOM);
     private static final double FACE_DIAGONAL = Math.sqrt(2);
     private static final double MIN_INTERACTION_SIZE = 0.25;
+    private static final double STAND_HEAD_CENTER = 1.72;
+    private static final double MAX_STAND_SCALE = 16.0;
+    private static final int VIEWER_CHECK_TICKS = 10;
+    private static final int VIEWER_RESYNC_TICKS = 600;
 
     private final JavaPlugin plugin;
+    private final SettingsHolder settings;
+    private final BedrockDetector bedrock;
+    private final Set<UUID> bedrockViewers = new HashSet<>();
     private final NamespacedKey entityKey;
     private final Map<String, Head> configured = new HashMap<>();
     private final Map<String, SpawnedHead> spawned = new HashMap<>();
@@ -67,13 +82,19 @@ public final class HeadManager {
     private boolean linkWarningLogged;
     private boolean linkErrorLogged;
     private boolean hologramWarningLogged;
+    private boolean proxyWarningLogged;
 
-    public HeadManager(JavaPlugin plugin) {
+    public HeadManager(JavaPlugin plugin, SettingsHolder settings) {
         this.plugin = plugin;
+        this.settings = settings;
+        this.bedrock = new BedrockDetector(plugin);
         entityKey = new NamespacedKey(plugin, "head_id");
         fancyHolograms = FancyHologramHook.connect(plugin);
         rotationTask = plugin.getServer().getScheduler().runTaskTimer(plugin,
                 this::rotateAll, 1L, 1L);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            registerViewer(player);
+        }
     }
 
     public void load(Map<String, Head> heads) {
@@ -157,6 +178,7 @@ public final class HeadManager {
 
     public void close() {
         rotationTask.cancel();
+        bedrockViewers.clear();
         for (String id : List.copyOf(spawned.keySet())) {
             removeSpawned(id);
         }
@@ -232,13 +254,17 @@ public final class HeadManager {
         if (interaction != null) {
             interactions.put(interaction.getUniqueId(), id);
         }
+        ArmorStand proxy = proxyEnabled() ? spawnProxy(head, id) : null;
         int interval = updateInterval(head.options());
         int refresh = head.hologram().refreshTicks();
         Schedule schedule = new Schedule(interval, refresh,
                 interval > 0 ? Math.floorMod(id.hashCode(), interval) : 0,
                 refresh > 0 ? Math.floorMod(id.hashCode(), refresh) : 0,
                 tick);
-        return new SpawnedHead(id, head, item, hologram, fancy, interaction, schedule);
+        SpawnedHead instance = new SpawnedHead(id, head, item, proxy, new HashSet<>(),
+                new HashSet<>(), hologram, fancy, interaction, schedule);
+        syncViewers(instance);
+        return instance;
     }
 
     private FancyHologramHook.Link attachLinked(Head head, String id) {
@@ -297,6 +323,14 @@ public final class HeadManager {
 
     private void rotateAll() {
         tick++;
+        int proxyInterval = settings.get().bedrockUpdateTicks();
+        if (!bedrockViewers.isEmpty()) {
+            if (tick % VIEWER_RESYNC_TICKS == 0) {
+                refreshViewers(true);
+            } else if (tick % VIEWER_CHECK_TICKS == 0) {
+                refreshViewers(false);
+            }
+        }
         for (String id : List.copyOf(spawned.keySet())) {
             SpawnedHead head = spawned.get(id);
             if (head == null) {
@@ -304,6 +338,7 @@ public final class HeadManager {
             }
             ItemDisplay item = head.item();
             if (!item.isValid()
+                    || (head.proxy() != null && !head.proxy().isValid())
                     || (head.hologram() != null && !head.hologram().isValid())
                     || (head.interaction() != null && !head.interaction().isValid())) {
                 removeSpawned(id);
@@ -323,6 +358,10 @@ public final class HeadManager {
                 item.setInterpolationDuration(schedule.interval);
                 item.setTransformation(transformation);
             }
+            if (head.proxy() != null && !head.proxyShown().isEmpty()
+                    && tick % proxyInterval == 0) {
+                updateProxy(head);
+            }
             if (head.fancy() != null && !head.fancy().owned()
                     && tick % LINK_CHECK_TICKS == 0) {
                 tickLink(head);
@@ -341,12 +380,15 @@ public final class HeadManager {
                 rotationRadians(options.speed(), gameTime),
                 rotationRadians(options.speedX(), gameTime),
                 rotationRadians(options.speedZ(), gameTime));
-        double bob = 0;
-        if (options.bobHeight() > 0) {
-            double phase = (gameTime % options.bobPeriod()) / (double) options.bobPeriod();
-            bob = Math.sin(phase * 2 * Math.PI) * options.bobHeight();
+        transformation.getTranslation().set(0f, (float) bobOffset(options, gameTime), 0f);
+    }
+
+    private static double bobOffset(HeadOptions options, long gameTime) {
+        if (options.bobHeight() <= 0) {
+            return 0;
         }
-        transformation.getTranslation().set(0f, (float) bob, 0f);
+        double phase = (gameTime % options.bobPeriod()) / (double) options.bobPeriod();
+        return Math.sin(phase * 2 * Math.PI) * options.bobHeight();
     }
 
     private static float rotationRadians(double speed, long gameTime) {
@@ -364,6 +406,168 @@ public final class HeadManager {
             return bob;
         }
         return bob == 0 ? rotation : Math.min(rotation, bob);
+    }
+
+    private boolean proxyEnabled() {
+        if (!settings.get().bedrockProxy() || !bedrock.bridgePresent()) {
+            return false;
+        }
+        if (scaleAttribute() == null && !proxyWarningLogged) {
+            proxyWarningLogged = true;
+            plugin.getLogger().warning("This server version has no scale attribute; "
+                    + "Bedrock heads will not be resized.");
+        }
+        return true;
+    }
+
+    private static Attribute scaleAttribute() {
+        for (String key : new String[]{"scale", "generic.scale"}) {
+            Attribute attribute = Registry.ATTRIBUTE.get(NamespacedKey.minecraft(key));
+            if (attribute != null) {
+                return attribute;
+            }
+        }
+        return null;
+    }
+
+    private double proxyScale(HeadOptions options) {
+        double value = options.scale() * settings.get().bedrockScaleMultiplier();
+        return Math.max(0.0625, Math.min(MAX_STAND_SCALE, value));
+    }
+
+    private Location proxyLocation(Head head, long gameTime) {
+        HeadOptions options = head.options();
+        Location base = head.location();
+        double centerY = base.getY() + HEAD_CENTER_Y * options.scale()
+                + bobOffset(options, gameTime) + settings.get().bedrockYOffset();
+        double y = centerY - STAND_HEAD_CENTER * proxyScale(options);
+        return new Location(base.getWorld(), base.getX(), y, base.getZ(),
+                proxyYaw(options, gameTime), 0f);
+    }
+
+    private static float proxyYaw(HeadOptions options, long gameTime) {
+        return (float) ((options.speed() * gameTime) % 360.0);
+    }
+
+    private ArmorStand spawnProxy(Head head, String id) {
+        World world = head.location().getWorld();
+        if (world == null) {
+            return null;
+        }
+        HeadOptions options = head.options();
+        Location at = proxyLocation(head, world.getGameTime());
+        return world.spawn(at, ArmorStand.class, stand -> {
+            stand.setVisibleByDefault(false);
+            stand.setInvisible(true);
+            stand.setMarker(true);
+            stand.setGravity(false);
+            stand.setSilent(true);
+            stand.setInvulnerable(true);
+            stand.setBasePlate(false);
+            stand.setArms(false);
+            stand.setPersistent(false);
+            stand.getEquipment().setHelmet(createSkull(options));
+            stand.getPersistentDataContainer().set(entityKey, PersistentDataType.STRING, id);
+            Attribute attribute = scaleAttribute();
+            AttributeInstance instance = attribute == null ? null : stand.getAttribute(attribute);
+            if (instance != null) {
+                instance.setBaseValue(proxyScale(options));
+            }
+        });
+    }
+
+    private void updateProxy(SpawnedHead head) {
+        HeadOptions options = head.head().options();
+        boolean bobbing = options.bobHeight() > 0;
+        boolean tumbling = options.speedX() != 0 || options.speedZ() != 0;
+        if (!bobbing && !tumbling && options.speed() == 0) {
+            return;
+        }
+        ArmorStand stand = head.proxy();
+        long gameTime = stand.getWorld().getGameTime();
+        if (tumbling) {
+            stand.setHeadPose(new EulerAngle(
+                    Math.toRadians((options.speedX() * gameTime) % 360.0), 0,
+                    Math.toRadians((options.speedZ() * gameTime) % 360.0)));
+        }
+        if (bobbing) {
+            // Only a bobbing head changes position, so only it pays for a full teleport.
+            stand.teleport(proxyLocation(head.head(), gameTime));
+        } else if (options.speed() != 0) {
+            stand.setRotation(proxyYaw(options, gameTime), 0f);
+        }
+    }
+
+    private void registerViewer(Player player) {
+        if (bedrock.isBedrock(player)) {
+            bedrockViewers.add(player.getUniqueId());
+        }
+    }
+
+    private void syncViewer(Player player, SpawnedHead head) {
+        ArmorStand proxy = head.proxy();
+        UUID viewer = player.getUniqueId();
+        if (proxy == null || !bedrockViewers.contains(viewer)) {
+            return;
+        }
+        if (head.itemHidden().add(viewer)) {
+            player.hideEntity(plugin, head.item());
+        }
+        if (inRange(player, head.head())) {
+            if (head.proxyShown().add(viewer)) {
+                player.showEntity(plugin, proxy);
+            }
+        } else if (head.proxyShown().remove(viewer)) {
+            player.hideEntity(plugin, proxy);
+        }
+    }
+
+    private static boolean inRange(Player player, Head head) {
+        Location at = player.getLocation();
+        Location base = head.location();
+        if (at.getWorld() != base.getWorld()) {
+            return false;
+        }
+        double range = head.displayRange();
+        return at.distanceSquared(base) <= range * range;
+    }
+
+    private void syncViewers(SpawnedHead head) {
+        if (head.proxy() == null) {
+            return;
+        }
+        for (UUID id : bedrockViewers) {
+            Player player = Bukkit.getPlayer(id);
+            if (player != null) {
+                syncViewer(player, head);
+            }
+        }
+    }
+
+    private void refreshViewers(boolean force) {
+        for (SpawnedHead head : spawned.values()) {
+            if (force) {
+                head.itemHidden().clear();
+                head.proxyShown().clear();
+            }
+            syncViewers(head);
+        }
+    }
+
+    public void onViewerJoin(Player player) {
+        registerViewer(player);
+        for (SpawnedHead head : spawned.values()) {
+            syncViewer(player, head);
+        }
+    }
+
+    public void onViewerQuit(Player player) {
+        UUID viewer = player.getUniqueId();
+        bedrockViewers.remove(viewer);
+        for (SpawnedHead head : spawned.values()) {
+            head.itemHidden().remove(viewer);
+            head.proxyShown().remove(viewer);
+        }
     }
 
     private TextDisplay spawnHologram(Head head, String id) {
@@ -569,6 +773,9 @@ public final class HeadManager {
     }
 
     private record SpawnedHead(String id, Head head, ItemDisplay item,
+                               ArmorStand proxy,
+                               Set<UUID> itemHidden,
+                               Set<UUID> proxyShown,
                                TextDisplay hologram,
                                FancyHologramHook.Link fancy,
                                Interaction interaction,
@@ -576,6 +783,9 @@ public final class HeadManager {
         private void remove() {
             if (item.isValid()) {
                 item.remove();
+            }
+            if (proxy != null && proxy.isValid()) {
+                proxy.remove();
             }
             if (hologram != null && hologram.isValid()) {
                 hologram.remove();

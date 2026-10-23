@@ -28,6 +28,10 @@ public final class SettingsLoader {
         }
         return new Settings(config.getString("language", "en_us"),
                 config.getString("default_head_texture", ""),
-                Math.max(0L, config.getLong("interaction_cooldown_ms", 500L)));
+                Math.max(0L, config.getLong("interaction_cooldown_ms", 500L)),
+                config.getBoolean("bedrock_proxy", true),
+                Math.max(0.05, Math.min(5.0, config.getDouble("bedrock_scale_multiplier", 0.85))),
+                config.getDouble("bedrock_y_offset", 0.0),
+                Math.max(1, Math.min(20, config.getInt("bedrock_update_ticks", 2))));
     }
 }

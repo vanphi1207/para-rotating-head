@@ -4,7 +4,7 @@ main: me.ihqqq.rotatingheads.RotatingHeadsPlugin
 api-version: '1.21'
 authors: [ihqqq]
 description: Clean, configurable rotating player heads for Paper.
-softdepend: [PlaceholderAPI, FancyHolograms]
+softdepend: [PlaceholderAPI, FancyHolograms, Geyser-Spigot, floodgate]
 commands:
   prh:
     description: Manage rotating heads

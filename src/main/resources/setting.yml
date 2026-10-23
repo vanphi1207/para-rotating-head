@@ -2,3 +2,16 @@ language: en_us
 default_head_texture: eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvMTVjMmZjOTIzMjhjNTQ1YTk4YjlmNTk4ZTM4Y2RlMjQ4NGFkMTNjOWY3ZmE3NWQ2ZmNkZjg3MjE0ZjJhMmFhMiJ9fX0=
 # Minimum time between two clicks of the same player on any head (0 = disabled).
 interaction_cooldown_ms: 500
+
+# --- Bedrock (Geyser / Floodgate) support ---
+# Geyser cannot render the scale or rotation of an item_display, so Bedrock
+# players are shown an invisible armor stand wearing the head instead
+# (Java players still see the normal item_display).
+bedrock_proxy: true
+# Armor-stand heads render at a different size than item_display. Raise this
+# if the head looks too small on Bedrock, lower it if too big.
+bedrock_scale_multiplier: 0.85
+# Vertical correction (blocks) for the Bedrock head. Tune in-game.
+bedrock_y_offset: 0.0
+# Ticks between Bedrock rotation updates (1 = smoothest, more packets).
+bedrock_update_ticks: 2

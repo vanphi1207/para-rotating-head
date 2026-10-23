@@ -10,6 +10,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
@@ -60,8 +61,14 @@ public final class HeadListener implements Listener {
     }
 
     @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        headManager.onViewerJoin(event.getPlayer());
+    }
+
+    @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         lastClick.remove(event.getPlayer().getUniqueId());
+        headManager.onViewerQuit(event.getPlayer());
     }
 
     @EventHandler

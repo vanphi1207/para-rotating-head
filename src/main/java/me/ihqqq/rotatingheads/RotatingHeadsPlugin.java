@@ -1,6 +1,7 @@
 package me.ihqqq.rotatingheads;
 
 import me.ihqqq.rotatingheads.command.RotatingHeadCommand;
+import me.ihqqq.rotatingheads.config.ConfigUpdater;
 import me.ihqqq.rotatingheads.config.HeadRepository;
 import me.ihqqq.rotatingheads.config.Language;
 import me.ihqqq.rotatingheads.config.SettingsHolder;
@@ -12,6 +13,7 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class RotatingHeadsPlugin extends JavaPlugin {
@@ -22,6 +24,8 @@ public final class RotatingHeadsPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveResource("heads.yml", false);
+        ConfigUpdater.updateAll(this, List.of("setting.yml",
+                "languages/en_us.yml", "languages/vi_vn.yml"));
         SettingsHolder settings = new SettingsHolder(new SettingsLoader(this));
         Language language = new Language(this, settings);
         repository = new HeadRepository(this);
@@ -30,7 +34,7 @@ public final class RotatingHeadsPlugin extends JavaPlugin {
                     + "/prh reload once it is valid.");
         }
         heads.putAll(repository.all());
-        headManager = new HeadManager(this);
+        headManager = new HeadManager(this, settings);
         headManager.cleanupOrphans();
         headManager.load(heads);
         RotatingHeadCommand command = new RotatingHeadCommand(repository, headManager, heads, settings, language);
